@@ -1,167 +1,159 @@
 --[[ 
-    BRM5 ULTIMATE FLY V3 (BYPASS CHARACTER CONTROLLER)
-    Hỗ trợ: Mobile & PC
-    Cơ chế: Can thiệp vào Module di chuyển của game để mở khóa tọa độ.
+    BRM5 MOBILE FLY - VERSION 4 (ULTIMATE FIX)
+    Cơ chế: Gravity Nullification + CFrame Interpolation
+    Hỗ trợ: Mobile Joystick + Custom Buttons
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Biến trạng thái
-getgenv().FlySettings = {
-    Active = false,
-    Speed = 50,
-    ElevateSpeed = 30
+-- Trạng thái hệ thống
+getgenv().FlyActive = false
+getgenv().FlySpeed = 60
+
+local states = {
+    up = false,
+    down = false,
+    forward = false
 }
 
-local moveState = {up = false, down = false}
+-- Xóa UI cũ
+if LocalPlayer.PlayerGui:FindFirstChild("FlyV4") then LocalPlayer.PlayerGui.FlyV4:Destroy() end
 
--- Hàm tìm kiếm Module di chuyển của BRM5 để vô hiệu hóa
-local function toggleGameController(state)
-    local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
-    -- BRM5 thường để logic di chuyển trong các Module này
-    local Controller = PlayerScripts:FindFirstChild("CharacterController", true) or PlayerScripts:FindFirstChild("ControlModule", true)
-    
-    if Controller and Controller:IsA("ModuleScript") then
-        local success, mod = pcall(require, Controller)
-        if success and type(mod) == "table" then
-            -- Tùy phiên bản game, chúng ta vô hiệu hóa hàm Update hoặc Disable
-            if mod.Update then
-                if state == false then
-                    if not getgenv().OldUpdate then getgenv().OldUpdate = mod.Update end
-                    mod.Update = function() end -- Làm trống hàm cập nhật của game
-                else
-                    if getgenv().OldUpdate then mod.Update = getgenv().OldUpdate end
-                end
-            end
+-- Giao diện điều khiển
+local sg = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+sg.Name = "FlyV4"
+sg.ResetOnSpawn = false
+
+local container = Instance.new("Frame", sg)
+container.Size = UDim2.new(0, 140, 0, 180)
+container.Position = UDim2.new(0.05, 0, 0.4, 0)
+container.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+container.Active = true
+container.Draggable = true
+Instance.new("UICorner", container)
+
+local title = Instance.new("TextLabel", container)
+title.Size = UDim2.new(1, 0, 0, 30)
+title.Text = "FLY MOBILE V4"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+title.Font = Enum.Font.GothamBold
+Instance.new("UICorner", title)
+
+local toggle = Instance.new("TextButton", container)
+toggle.Size = UDim2.new(0.9, 0, 0, 35)
+toggle.Position = UDim2.new(0.05, 0, 0.2, 0)
+toggle.Text = "FLY: OFF"
+toggle.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+toggle.TextColor3 = Color3.new(1, 1, 1)
+Instance.new("UICorner", toggle)
+
+local upBtn = Instance.new("TextButton", container)
+upBtn.Size = UDim2.new(0.42, 0, 0, 40)
+upBtn.Position = UDim2.new(0.05, 0, 0.45, 0)
+upBtn.Text = "LÊN"
+upBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+upBtn.TextColor3 = Color3.new(1, 1, 1)
+Instance.new("UICorner", upBtn)
+
+local downBtn = Instance.new("TextButton", container)
+downBtn.Size = UDim2.new(0.42, 0, 0, 40)
+downBtn.Position = UDim2.new(0.53, 0, 0.45, 0)
+downBtn.Text = "XUỐNG"
+downBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+downBtn.TextColor3 = Color3.new(1, 1, 1)
+Instance.new("UICorner", downBtn)
+
+local speedInput = Instance.new("TextBox", container)
+speedInput.Size = UDim2.new(0.9, 0, 0, 30)
+speedInput.Position = UDim2.new(0.05, 0, 0.75, 0)
+speedInput.Text = "60"
+speedInput.PlaceholderText = "Tốc độ..."
+speedInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+speedInput.TextColor3 = Color3.new(1, 1, 1)
+Instance.new("UICorner", speedInput)
+
+-- Xử lý nút bấm Mobile
+local function setupButton(btn, stateKey)
+    btn.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+            states[stateKey] = true
+            btn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
         end
-    end
-end
-
--- UI cho Mobile & PC
-local function createUI()
-    if LocalPlayer.PlayerGui:FindFirstChild("FlyV3") then LocalPlayer.PlayerGui.FlyV3:Destroy() end
-    
-    local sg = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
-    sg.Name = "FlyV3"
-    sg.ResetOnSpawn = false
-    
-    local main = Instance.new("Frame", sg)
-    main.Size = UDim2.new(0, 150, 0, 180)
-    main.Position = UDim2.new(0.05, 0, 0.4, 0)
-    main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    main.Active = true
-    main.Draggable = true
-    Instance.new("UICorner", main)
-
-    local title = Instance.new("TextLabel", main)
-    title.Size = UDim2.new(1, 0, 0, 30)
-    title.Text = "BRM5 FLY V3"
-    title.TextColor3 = Color3.new(1, 1, 1)
-    title.BackgroundTransparency = 1
-    title.Font = Enum.Font.GothamBold
-
-    local toggle = Instance.new("TextButton", main)
-    toggle.Size = UDim2.new(0.9, 0, 0, 40)
-    toggle.Position = UDim2.new(0.05, 0, 0.25, 0)
-    toggle.Text = "FLY: OFF"
-    toggle.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-    toggle.TextColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", toggle)
-
-    local speedBox = Instance.new("TextBox", main)
-    speedBox.Size = UDim2.new(0.9, 0, 0, 30)
-    speedBox.Position = UDim2.new(0.05, 0, 0.5, 0)
-    speedBox.Text = "50"
-    speedBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    speedBox.TextColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", speedBox)
-
-    local up = Instance.new("TextButton", main)
-    up.Size = UDim2.new(0.42, 0, 0, 40)
-    up.Position = UDim2.new(0.05, 0, 0.7, 0)
-    up.Text = "UP"
-    up.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    up.TextColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", up)
-
-    local down = Instance.new("TextButton", main)
-    down.Size = UDim2.new(0.42, 0, 0, 40)
-    down.Position = UDim2.new(0.53, 0, 0.7, 0)
-    down.Text = "DOWN"
-    down.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    down.TextColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", down)
-
-    -- Sự kiện nút
-    up.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then moveState.up = true end end)
-    up.InputEnded:Connect(function() moveState.up = false end)
-    down.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then moveState.down = true end end)
-    down.InputEnded:Connect(function() moveState.down = false end)
-    speedBox.FocusLost:Connect(function() getgenv().FlySettings.Speed = tonumber(speedBox.Text) or 50 end)
-
-    return toggle
-end
-
-local flyLoop
-local function startFly()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local root = char:WaitForChild("HumanoidRootPart")
-    local hum = char:WaitForChild("Humanoid")
-
-    -- Bước 1: Vô hiệu hóa Controller của game
-    toggleGameController(false)
-    
-    -- Bước 2: Dùng Anchor để giữ nhân vật (Bypass vật lý game)
-    root.Anchored = true
-    hum.PlatformStand = true
-
-    flyLoop = RunService.Heartbeat:Connect(function(dt)
-        if not getgenv().FlySettings.Active or not char.Parent then
-            if flyLoop then flyLoop:Disconnect() end
-            root.Anchored = false
-            hum.PlatformStand = false
-            toggleGameController(true) -- Trả lại quyền điều khiển cho game
-            return
-        end
-
-        local moveDir = Vector3.new(0, 0, 0)
-        local camCF = Camera.CFrame
-
-        -- Nhận diện Joystick (Cực kỳ quan trọng cho Mobile)
-        local moveInput = hum.MoveDirection
-        if moveInput.Magnitude > 0 then
-            moveDir = moveDir + moveInput
-        end
-
-        -- Nút bổ trợ
-        if moveState.up then moveDir = moveDir + Vector3.new(0, 1, 0) end
-        if moveState.down then moveDir = moveDir - Vector3.new(0, 1, 0) end
-
-        -- Cập nhật tọa độ trực tiếp
-        if moveDir.Magnitude > 0 then
-            root.CFrame = root.CFrame + (moveDir * getgenv().FlySettings.Speed * dt)
-        end
-
-        -- Luôn xoay theo hướng Camera
-        root.CFrame = CFrame.new(root.CFrame.Position, root.CFrame.Position + Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z))
+    end)
+    btn.InputEnded:Connect(function()
+        states[stateKey] = false
+        btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
     end)
 end
 
-local btn = createUI()
-btn.MouseButton1Click:Connect(function()
-    getgenv().FlySettings.Active = not getgenv().FlySettings.Active
-    if getgenv().FlySettings.Active then
-        btn.Text = "FLY: ON"
-        btn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-        startFly()
+setupButton(upBtn, "up")
+setupButton(downBtn, "down")
+
+speedInput.FocusLost:Connect(function()
+    getgenv().FlySpeed = tonumber(speedInput.Text) or 60
+end)
+
+-- Logic Fly Chính
+local flyConnection
+toggle.MouseButton1Click:Connect(function()
+    getgenv().FlyActive = not getgenv().FlyActive
+    
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    
+    if not root or not hum then return end
+
+    if getgenv().FlyActive then
+        toggle.Text = "FLY: ON"
+        toggle.BackgroundColor3 = Color3.fromRGB(60, 200, 60)
+        
+        -- Tạo một phần thân giả để không bị rơi
+        local bodyVelocity = Instance.new("BodyVelocity", root)
+        bodyVelocity.Name = "FlyVelocityV4"
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+
+        hum.PlatformStand = true
+
+        flyConnection = RunService.RenderStepped:Connect(function(dt)
+            if not getgenv().FlyActive or not char.Parent then
+                if flyConnection then flyConnection:Disconnect() end
+                if root:FindFirstChild("FlyVelocityV4") then root.FlyVelocityV4:Destroy() end
+                hum.PlatformStand = false
+                return
+            end
+
+            local moveDir = hum.MoveDirection -- Nhận diện từ Joystick Mobile
+            local verticalDir = 0
+            
+            if states.up then verticalDir = 1 end
+            if states.down then verticalDir = -1 end
+
+            -- Tính toán vị trí mới
+            local currentPos = root.Position
+            local cameraCF = Camera.CFrame
+            
+            -- Hướng bay: Kết hợp Joystick và Nút lên xuống
+            local finalVel = (moveDir * getgenv().FlySpeed) + Vector3.new(0, verticalDir * getgenv().FlySpeed, 0)
+            
+            -- Di chuyển bằng CFrame Lerp để tránh bị giật
+            root.CFrame = CFrame.new(root.Position + (finalVel * dt), root.Position + cameraCF.LookVector)
+            
+            -- Quan trọng: Reset vận tốc vật lý để tránh game can thiệp
+            root.Velocity = Vector3.new(0, 0.05, 0)
+        end)
     else
-        btn.Text = "FLY: OFF"
-        btn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+        toggle.Text = "FLY: OFF"
+        toggle.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+        if flyConnection then flyConnection:Disconnect() end
+        if root:FindFirstChild("FlyVelocityV4") then root.FlyVelocityV4:Destroy() end
+        hum.PlatformStand = false
     end
 end)
 
-print("BRM5 Ultimate Fly Loaded! Nếu không bay được, hãy thử nhảy 1 lần rồi bật.")
+print("BRM5 Mobile Fly V4 Loaded!")
