@@ -1,44 +1,100 @@
-local function RequireModule(Name)
-    for _, Instance in pairs(getmodules()) do
-        if Instance.Name == Name then
-            return require(Instance)
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local PlayerService = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = PlayerService.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+local flyEnabled = false
+local flySpeed = 300
+local walkSpeedValue = 400
+
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local FlyStatus = Instance.new("TextLabel")
+local SpeedInput = Instance.new("TextBox")
+
+ScreenGui.Parent = game:GetService("CoreGui")
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.Position = UDim2.new(0, 50, 0.5, -60)
+MainFrame.Size = UDim2.new(0, 200, 0, 130)
+MainFrame.BorderSizePixel = 0
+
+Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.Text = "TOKAI BYPASS UI"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+
+FlyStatus.Parent = MainFrame
+FlyStatus.Position = UDim2.new(0, 0, 0, 45)
+FlyStatus.Size = UDim2.new(1, 0, 0, 30)
+FlyStatus.Text = "Fly: OFF [E]"
+FlyStatus.TextColor3 = Color3.fromRGB(255, 100, 100)
+FlyStatus.BackgroundTransparency = 1
+
+SpeedInput.Parent = MainFrame
+SpeedInput.Position = UDim2.new(0, 15, 0, 85)
+SpeedInput.Size = UDim2.new(0, 170, 0, 30)
+SpeedInput.Text = "200"
+SpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+local function GetModules()
+    local modules = {}
+    for _, v in pairs(getreg()) do
+        if type(v) == "table" and rawget(v, "Update") then
+            table.insert(modules, v)
         end
     end
+    return modules
 end
 
-local function HookFunction(ModuleName, Function, Hook)
-    local Module, Old = nil, nil
-
-    while task.wait() do
-        Module = RequireModule(ModuleName)
-        if Module and Module[Function] then
-            Old = Module[Function]
-            break
+task.spawn(function()
+    while task.wait(1) do
+        for _, mod in pairs(GetModules()) do
+            -- Hook vao ControllerClass de chinh toc do
+            if mod.LateUpdate then
+                local old = mod.LateUpdate
+                mod.LateUpdate = function(self, ...)
+                    self.Speed = tonumber(SpeedInput.Text) or walkSpeedValue
+                    return old(self, ...)
+                end
+            end
         end
     end
-
-    Module[Function] = function(...)
-        return Hook(Old, ...)
-    end
-end
-
-local targetSpeed = 300
-local speedhackEnabled = true
-
-HookFunction("ControllerClass", "LateUpdate", function(Old, Self, ...)
-    if speedhackEnabled then
-        Self.Speed = targetSpeed
-    end
-
-    return Old(Self, ...)
 end)
 
-HookFunction("ViewmodelClass", "Update", function(Old, Self, ...)
-    local Args = {...}
-
-    if speedhackEnabled and Args[2] then
-        Args[2] = CFrame.new(Args[2].Position)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.E then
+        flyEnabled = not flyEnabled
+        FlyStatus.Text = flyEnabled and "Fly: ON" or "Fly: OFF [E]"
+        FlyStatus.TextColor3 = flyEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
     end
+end)
 
-    return Old(Self, unpack(Args))
+-- Fly bang cach thay doi CFrame truc tiep (Bypass BasePart)
+RunService.RenderStepped:Connect(function()
+    if flyEnabled and LocalPlayer.Character and LocalPlayer.Character.PrimaryPart then
+        local ppart = LocalPlayer.Character.PrimaryPart
+        local move = Vector3.new(0,0,0)
+        
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0, 1, 0) end
+        
+        if move.Magnitude > 0 then
+            ppart.CFrame = ppart.CFrame + (move * flySpeed)
+        else
+            -- Giu nguyen vi tri de khong bi roi do trong luc custom cua game
+            ppart.Velocity = Vector3.zero
+        end
+    end
 end)
