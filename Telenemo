@@ -1,0 +1,174 @@
+-- Cấu hình cơ bản
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- Xóa UI cũ nếu có (để tránh trùng lặp khi chạy script nhiều lần)
+if game:GetService("CoreGui"):FindFirstChild("TelekinesisUI") then
+    game:GetService("CoreGui").TelekinesisUI:Destroy()
+elseif LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("TelekinesisUI") then
+    LocalPlayer.PlayerGui.TelekinesisUI:Destroy()
+end
+
+-- Tạo ScreenGui
+local SG = Instance.new("ScreenGui")
+SG.Name = "TelekinesisUI"
+SG.ResetOnSpawn = false
+-- Ưu tiên bỏ vào CoreGui để không bị mất khi reset nhân vật, nếu không được thì bỏ vào PlayerGui
+local success = pcall(function() SG.Parent = game:GetService("CoreGui") end)
+if not success then SG.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- Tạo Tâm (Crosshair)
+local Crosshair = Instance.new("Frame", SG)
+Crosshair.Size = UDim2.new(0, 6, 0, 6)
+Crosshair.Position = UDim2.new(0.5, -3, 0.5, -3)
+Crosshair.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+Crosshair.BorderSizePixel = 0
+local UICorner = Instance.new("UICorner", Crosshair)
+UICorner.CornerRadius = UDim.new(1, 0)
+
+-- Tạo Frame chứa các nút điều khiển (nằm ở phía dưới màn hình)
+local ControlsFrame = Instance.new("Frame", SG)
+ControlsFrame.Size = UDim2.new(0, 300, 0, 60)
+ControlsFrame.Position = UDim2.new(0.5, -150, 1, -100)
+ControlsFrame.BackgroundTransparency = 1
+
+-- Hàm tạo nút (Button Template)
+local function CreateButton(name, text, pos)
+    local btn = Instance.new("TextButton", ControlsFrame)
+    btn.Name = name
+    btn.Size = UDim2.new(0.3, 0, 1, 0)
+    btn.Position = pos
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 18
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = text
+    btn.AutoButtonColor = true
+    
+    local corner = Instance.new("UICorner", btn)
+    corner.CornerRadius = UDim.new(0, 8)
+    
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = Color3.fromRGB(100, 100, 100)
+    stroke.Thickness = 2
+    
+    return btn
+end
+
+local BtnNear = CreateButton("BtnNear", "<< GẦN", UDim2.new(0, 0, 0, 0))
+local BtnLock = CreateButton("BtnLock", "KHÓA", UDim2.new(0.35, 0, 0, 0))
+BtnLock.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+local BtnFar = CreateButton("BtnFar", "XA >>", UDim2.new(0.7, 0, 0, 0))
+
+-- Tạo Highlight để làm nổi bật khối bị khóa (thay cho tia Laser)
+local Highlight = Instance.new("Highlight")
+Highlight.FillColor = Color3.fromRGB(0, 255, 255)
+Highlight.FillTransparency = 0.5
+Highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+Highlight.Parent = SG
+
+-- Các biến hệ thống
+local LockedPart = nil
+local TargetDistance = 15
+local BP = nil
+local BG = nil
+local MovingNear = false
+local MovingFar = false
+
+-- Hàm Raycast từ giữa màn hình để lấy Block
+local function GetPartAtCrosshair()
+    local viewportSize = Camera.ViewportSize
+    local ray = Camera:ViewportPointToRay(viewportSize.X / 2, viewportSize.Y / 2)
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    if LocalPlayer.Character then
+        raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    end
+
+    local result = Workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
+    -- Chỉ chọn những Part không bị khóa cứng (Anchored = false)
+    if result and result.Instance and not result.Instance.Anchored then
+        return result.Instance, result.Distance
+    end
+    return nil, nil
+end
+
+-- Xử lý nút Khóa / Mở khóa
+BtnLock.MouseButton1Click:Connect(function()
+    if LockedPart then
+        -- Mở khóa
+        LockedPart = nil
+        if BP then BP:Destroy() end
+        if BG then BG:Destroy() end
+        Highlight.Adornee = nil
+        BtnLock.Text = "KHÓA"
+        BtnLock.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+    else
+        -- Bắt đầu tìm và khóa khối ở tâm
+        local part, dist = GetPartAtCrosshair()
+        if part then
+            LockedPart = part
+            TargetDistance = math.clamp(dist, 5, 500)
+
+            -- BodyPosition để kéo khối đi theo camera
+            BP = Instance.new("BodyPosition")
+            BP.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            BP.P = 20000
+            BP.D = 1000
+            BP.Parent = LockedPart
+
+            -- BodyGyro để khối không bị xoay loạn xạ
+            BG = Instance.new("BodyGyro")
+            BG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            BG.CFrame = LockedPart.CFrame
+            BG.Parent = LockedPart
+
+            Highlight.Adornee = LockedPart
+            BtnLock.Text = "MỞ KHÓA"
+            BtnLock.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        end
+    end
+end)
+
+-- Xử lý giữ nút kéo lại gần / ra xa
+local function BindHold(btn, stateVar)
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if btn.Name == "BtnNear" then MovingNear = true else MovingFar = true end
+        end
+    end)
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if btn.Name == "BtnNear" then MovingNear = false else MovingFar = false end
+        end
+    end)
+end
+
+BindHold(BtnNear, "MovingNear")
+BindHold(BtnFar, "MovingFar")
+
+-- Vòng lặp cập nhật vị trí của khối mỗi frame
+RunService.RenderStepped:Connect(function(dt)
+    if LockedPart and LockedPart.Parent then
+        -- Cập nhật khoảng cách nếu đang giữ nút
+        if MovingNear then TargetDistance = math.max(3, TargetDistance - 30 * dt) end
+        if MovingFar then TargetDistance = math.min(1000, TargetDistance + 30 * dt) end
+
+        -- Tính toán vị trí mới dựa theo hướng nhìn của Camera
+        local targetPos = Camera.CFrame.Position + (Camera.CFrame.LookVector * TargetDistance)
+        
+        if BP then
+            BP.Position = targetPos
+        end
+    elseif LockedPart and not LockedPart.Parent then
+        -- Khối đã bị phá hủy hoặc biến mất
+        LockedPart = nil
+        Highlight.Adornee = nil
+        BtnLock.Text = "KHÓA"
+        BtnLock.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+    end
+end)
