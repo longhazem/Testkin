@@ -1,7 +1,7 @@
 -- Khởi tạo cài đặt tốc độ (Bạn có thể thay đổi các giá trị này)
 local SpeedSettings = {
-    WalkSpeedMult = 50,    -- Gấp 2 lần tốc độ đi bộ mặc định
-    SprintSpeedMult = 50,  -- Gấp 3 lần tốc độ chạy nhanh mặc định
+    WalkSpeedMult = 2,    -- Gấp 2 lần tốc độ đi bộ mặc định
+    SprintSpeedMult = 3,  -- Gấp 3 lần tốc độ chạy nhanh mặc định
     NoMovementPenalty = true -- Loại bỏ hình phạt giảm tốc độ khi trúng đạn/vác nặng
 }
 
