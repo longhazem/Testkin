@@ -1,69 +1,44 @@
-local PlayerService = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-
-local LocalPlayer = PlayerService.LocalPlayer
-local Camera = Workspace.CurrentCamera
-
-local flyEnabled = false
-local flySpeed = 100
-local activationKey = Enum.KeyCode.E
-
-local XZ = Vector3.new(1, 0, 1)
-local YPlus = Vector3.new(0, 1, 0)
-local YMinus = Vector3.new(0, -1, 0)
-
-local noClipConnection
-local function ToggleNoClip(state)
-    if state then
-        noClipConnection = RunService.Stepped:Connect(function()
-            if not LocalPlayer.Character then return end
-            for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-            end
-        end)
-    else
-        if noClipConnection then
-            noClipConnection:Disconnect()
-            noClipConnection = nil
+local function RequireModule(Name)
+    for _, Instance in pairs(getmodules()) do
+        if Instance.Name == Name then
+            return require(Instance)
         end
     end
 end
 
-local function GetFlyVelocity()
-    local LookVector = Camera.CFrame.LookVector
-    local RightVector = Camera.CFrame.RightVector
-    
-    local forward = UserInputService:IsKeyDown(Enum.KeyCode.W) and LookVector or Vector3.zero
-    local backward = UserInputService:IsKeyDown(Enum.KeyCode.S) and -LookVector or Vector3.zero
-    local left = UserInputService:IsKeyDown(Enum.KeyCode.A) and -RightVector or Vector3.zero
-    local right = UserInputService:IsKeyDown(Enum.KeyCode.D) and RightVector or Vector3.zero
-    local up = UserInputService:IsKeyDown(Enum.KeyCode.Space) and YPlus or Vector3.zero
-    local down = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and YMinus or Vector3.zero
-    
-    local dir = forward + backward + left + right + up + down
-    return dir.Magnitude > 0 and dir.Unit or Vector3.zero
+local function HookFunction(ModuleName, Function, Hook)
+    local Module, Old = nil, nil
+
+    while task.wait() do
+        Module = RequireModule(ModuleName)
+        if Module and Module[Function] then
+            Old = Module[Function]
+            break
+        end
+    end
+
+    Module[Function] = function(...)
+        return Hook(Old, ...)
+    end
 end
 
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == activationKey then
-        flyEnabled = not flyEnabled
-        ToggleNoClip(flyEnabled)
+local targetSpeed = 300
+local speedhackEnabled = true
+
+HookFunction("ControllerClass", "LateUpdate", function(Old, Self, ...)
+    if speedhackEnabled then
+        Self.Speed = targetSpeed
     end
+
+    return Old(Self, ...)
 end)
 
-RunService.RenderStepped:Connect(function()
-    if flyEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local root = LocalPlayer.Character.HumanoidRootPart
-        local velocity = GetFlyVelocity() * flySpeed
-        root.Velocity = velocity
-        
-        if velocity.Magnitude == 0 then
-            root.Velocity = Vector3.new(0, 0, 0)
-        end
+HookFunction("ViewmodelClass", "Update", function(Old, Self, ...)
+    local Args = {...}
+
+    if speedhackEnabled and Args[2] then
+        Args[2] = CFrame.new(Args[2].Position)
     end
+
+    return Old(Self, unpack(Args))
 end)
