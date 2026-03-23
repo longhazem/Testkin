@@ -1,159 +1,72 @@
---[[ 
-    BRM5 MOBILE FLY - VERSION 4 (ULTIMATE FIX)
-    Cơ chế: Gravity Nullification + CFrame Interpolation
-    Hỗ trợ: Mobile Joystick + Custom Buttons
-]]
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
--- Trạng thái hệ thống
-getgenv().FlyActive = false
-getgenv().FlySpeed = 60
-
-local states = {
-    up = false,
-    down = false,
-    forward = false
+-- Khởi tạo cài đặt tốc độ (Bạn có thể thay đổi các giá trị này)
+local SpeedSettings = {
+    WalkSpeedMult = 50,    -- Gấp 2 lần tốc độ đi bộ mặc định
+    SprintSpeedMult = 50,  -- Gấp 3 lần tốc độ chạy nhanh mặc định
+    NoMovementPenalty = true -- Loại bỏ hình phạt giảm tốc độ khi trúng đạn/vác nặng
 }
 
--- Xóa UI cũ
-if LocalPlayer.PlayerGui:FindFirstChild("FlyV4") then LocalPlayer.PlayerGui.FlyV4:Destroy() end
-
--- Giao diện điều khiển
-local sg = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
-sg.Name = "FlyV4"
-sg.ResetOnSpawn = false
-
-local container = Instance.new("Frame", sg)
-container.Size = UDim2.new(0, 140, 0, 180)
-container.Position = UDim2.new(0.05, 0, 0.4, 0)
-container.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-container.Active = true
-container.Draggable = true
-Instance.new("UICorner", container)
-
-local title = Instance.new("TextLabel", container)
-title.Size = UDim2.new(1, 0, 0, 30)
-title.Text = "FLY MOBILE V4"
-title.TextColor3 = Color3.new(1, 1, 1)
-title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-title.Font = Enum.Font.GothamBold
-Instance.new("UICorner", title)
-
-local toggle = Instance.new("TextButton", container)
-toggle.Size = UDim2.new(0.9, 0, 0, 35)
-toggle.Position = UDim2.new(0.05, 0, 0.2, 0)
-toggle.Text = "FLY: OFF"
-toggle.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-toggle.TextColor3 = Color3.new(1, 1, 1)
-Instance.new("UICorner", toggle)
-
-local upBtn = Instance.new("TextButton", container)
-upBtn.Size = UDim2.new(0.42, 0, 0, 40)
-upBtn.Position = UDim2.new(0.05, 0, 0.45, 0)
-upBtn.Text = "LÊN"
-upBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-upBtn.TextColor3 = Color3.new(1, 1, 1)
-Instance.new("UICorner", upBtn)
-
-local downBtn = Instance.new("TextButton", container)
-downBtn.Size = UDim2.new(0.42, 0, 0, 40)
-downBtn.Position = UDim2.new(0.53, 0, 0.45, 0)
-downBtn.Text = "XUỐNG"
-downBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-downBtn.TextColor3 = Color3.new(1, 1, 1)
-Instance.new("UICorner", downBtn)
-
-local speedInput = Instance.new("TextBox", container)
-speedInput.Size = UDim2.new(0.9, 0, 0, 30)
-speedInput.Position = UDim2.new(0.05, 0, 0.75, 0)
-speedInput.Text = "60"
-speedInput.PlaceholderText = "Tốc độ..."
-speedInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-speedInput.TextColor3 = Color3.new(1, 1, 1)
-Instance.new("UICorner", speedInput)
-
--- Xử lý nút bấm Mobile
-local function setupButton(btn, stateKey)
-    btn.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
-            states[stateKey] = true
-            btn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
+local function findModule(name)
+    local RF = game:GetService("ReplicatedFirst")
+    local RS = game:GetService("ReplicatedStorage")
+    local function search(parent)
+        if not parent then return end
+        for _, child in ipairs(parent:GetChildren()) do
+            if (child.Name:find(name) or child.Name:lower():find(name:lower())) and child:IsA("ModuleScript") then
+                return child
+            end
+            local found = search(child)
+            if found then return found end
         end
-    end)
-    btn.InputEnded:Connect(function()
-        states[stateKey] = false
-        btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-    end)
+    end
+    return search(RF) or search(RS)
 end
 
-setupButton(upBtn, "up")
-setupButton(downBtn, "down")
+task.spawn(function()
+    local CharacterController = nil
+    while true do
+        if not CharacterController then
+            local mod = findModule("CharacterController")
+            if mod then
+                local success, result = pcall(require, mod)
+                if success and result and result.Update then
+                    CharacterController = result
+                    
+                    -- Bắt đầu Hook hàm Update để can thiệp tốc độ
+                    local oldUpdate = CharacterController.Update
+                    CharacterController.Update = function(self, inputVector, deltaTime)
+                        if not self or not self._localActor then 
+                            return oldUpdate(self, inputVector, deltaTime) 
+                        end
 
-speedInput.FocusLost:Connect(function()
-    getgenv().FlySpeed = tonumber(speedInput.Text) or 60
-end)
+                        -- 1. Loại bỏ hình phạt di chuyển (nếu bật)
+                        if SpeedSettings.NoMovementPenalty then
+                            self._localActor.SpeedPenalty = 1
+                        end
 
--- Logic Fly Chính
-local flyConnection
-toggle.MouseButton1Click:Connect(function()
-    getgenv().FlyActive = not getgenv().FlyActive
-    
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    
-    if not root or not hum then return end
+                        -- 2. Tính toán và áp dụng hệ số nhân tốc độ
+                        local baseWeight = self._weightMulti or 1
+                        local walkMult = SpeedSettings.WalkSpeedMult or 1
+                        local sprintMult = SpeedSettings.SprintSpeedMult or 1
+                        
+                        -- Kiểm tra đang chạy nhanh hay đi bộ để áp dụng đúng multiplier
+                        local activeMult = self.IsSprinting and sprintMult or walkMult
 
-    if getgenv().FlyActive then
-        toggle.Text = "FLY: ON"
-        toggle.BackgroundColor3 = Color3.fromRGB(60, 200, 60)
-        
-        -- Tạo một phần thân giả để không bị rơi
-        local bodyVelocity = Instance.new("BodyVelocity", root)
-        bodyVelocity.Name = "FlyVelocityV4"
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                        -- Ghi đè trọng số di chuyển (weightMulti) để tăng tốc độ vật lý
+                        self._weightMulti = baseWeight * activeMult
 
-        hum.PlatformStand = true
+                        -- Chạy hàm gốc với tốc độ đã được sửa đổi
+                        local res = oldUpdate(self, inputVector, deltaTime)
 
-        flyConnection = RunService.RenderStepped:Connect(function(dt)
-            if not getgenv().FlyActive or not char.Parent then
-                if flyConnection then flyConnection:Disconnect() end
-                if root:FindFirstChild("FlyVelocityV4") then root.FlyVelocityV4:Destroy() end
-                hum.PlatformStand = false
-                return
+                        -- Khôi phục lại trọng số gốc để tránh lỗi logic game ở frame sau
+                        self._weightMulti = baseWeight
+                        
+                        return res
+                    end
+                    print("✓ Đã tách và kích hoạt logic Speed thành công!")
+                    break 
+                end
             end
-
-            local moveDir = hum.MoveDirection -- Nhận diện từ Joystick Mobile
-            local verticalDir = 0
-            
-            if states.up then verticalDir = 1 end
-            if states.down then verticalDir = -1 end
-
-            -- Tính toán vị trí mới
-            local currentPos = root.Position
-            local cameraCF = Camera.CFrame
-            
-            -- Hướng bay: Kết hợp Joystick và Nút lên xuống
-            local finalVel = (moveDir * getgenv().FlySpeed) + Vector3.new(0, verticalDir * getgenv().FlySpeed, 0)
-            
-            -- Di chuyển bằng CFrame Lerp để tránh bị giật
-            root.CFrame = CFrame.new(root.Position + (finalVel * dt), root.Position + cameraCF.LookVector)
-            
-            -- Quan trọng: Reset vận tốc vật lý để tránh game can thiệp
-            root.Velocity = Vector3.new(0, 0.05, 0)
-        end)
-    else
-        toggle.Text = "FLY: OFF"
-        toggle.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-        if flyConnection then flyConnection:Disconnect() end
-        if root:FindFirstChild("FlyVelocityV4") then root.FlyVelocityV4:Destroy() end
-        hum.PlatformStand = false
+        end
+        task.wait(2)
     end
 end)
-
-print("BRM5 Mobile Fly V4 Loaded!")
