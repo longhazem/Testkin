@@ -1,6 +1,6 @@
 --[[
-    BRM5 ADVANCED FLY FIX (Bản can thiệp CFrame)
-    Giải quyết vấn đề CharacterController của BRM5 chặn BodyVelocity.
+    BRM5 ULTIMATE FLY - FIXED FOR MOBILE & PC
+    Cơ chế: Vô hiệu hóa trọng lực + LinearVelocity
 ]]
 
 local Players = game:GetService("Players")
@@ -9,106 +9,159 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Biến cấu hình
-getgenv().FlyActive = false
-getgenv().FlySpeed = 50
+getgenv().FlyConfig = {
+    Active = false,
+    Speed = 50,
+    VerticalSpeed = 40
+}
 
--- Tạo giao diện nhỏ để điều khiển
+local moveState = {forward = false, backward = false, left = false, right = false, up = false, down = false}
+
+-- Tạo UI kéo được và thân thiện Mobile
 local function createUI()
-    if LocalPlayer.PlayerGui:FindFirstChild("FlyFixUI") then
-        LocalPlayer.PlayerGui.FlyFixUI:Destroy()
-    end
-
+    if LocalPlayer.PlayerGui:FindFirstChild("BRM5_FlyV2") then LocalPlayer.PlayerGui["BRM5_FlyV2"]:Destroy() end
+    
     local sg = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
-    sg.Name = "FlyFixUI"
+    sg.Name = "BRM5_FlyV2"
+    sg.ResetOnSpawn = false
     
     local frame = Instance.new("Frame", sg)
-    frame.Size = UDim2.new(0, 180, 0, 100)
-    frame.Position = UDim2.new(0.1, 0, 0.5, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    frame.Size = UDim2.new(0, 160, 0, 180)
+    frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     frame.Active = true
     frame.Draggable = true
-    
-    local corner = Instance.new("UICorner", frame)
-    
-    local title = Instance.new("TextLabel", frame)
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.Text = "BRM5 Fly Fixed"
-    title.TextColor3 = Color3.new(1, 1, 1)
-    title.BackgroundTransparency = 1
-    title.Font = Enum.Font.GothamBold
-    
-    local toggle = Instance.new("TextButton", frame)
-    toggle.Size = UDim2.new(0.9, 0, 0, 30)
-    toggle.Position = UDim2.new(0.05, 0, 0.3, 0)
-    toggle.Text = "FLY: OFF"
-    toggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    toggle.TextColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", toggle)
-    
-    local speedInput = Instance.new("TextBox", frame)
-    speedInput.Size = UDim2.new(0.9, 0, 0, 25)
-    speedInput.Position = UDim2.new(0.05, 0, 0.65, 0)
-    speedInput.Text = "50"
-    speedInput.PlaceholderText = "Tốc độ..."
-    speedInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    speedInput.TextColor3 = Color3.new(1, 1, 1)
-    Instance.new("UICorner", speedInput)
+    Instance.new("UICorner", frame)
 
-    -- Logic Fly bằng cách thay đổi CFrame (Bỏ qua vật lý game)
-    local flyConn
-    local function toggleFly()
-        getgenv().FlyActive = not getgenv().FlyActive
-        if getgenv().FlyActive then
-            toggle.Text = "FLY: ON"
-            toggle.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-            
-            local char = LocalPlayer.Character
-            if not char then return end
-            local root = char:FindFirstChild("HumanoidRootPart")
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not root then return end
-            
-            -- Neo nhân vật lại để tránh bị game kéo xuống
-            root.Anchored = true 
-            
-            flyConn = RunService.Heartbeat:Connect(function(dt)
-                if not getgenv().FlyActive or not char.Parent then 
-                    flyConn:Disconnect()
-                    root.Anchored = false
-                    return 
-                end
-                
-                local moveDir = Vector3.new(0,0,0)
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + Camera.CFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - Camera.CFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - Camera.CFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + Camera.CFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0,1,0) end
-                
-                if moveDir.Magnitude > 0 then
-                    root.CFrame = root.CFrame + (moveDir.Unit * getgenv().FlySpeed * dt)
-                end
-                
-                -- Luôn hướng nhân vật theo Camera
-                root.CFrame = CFrame.new(root.CFrame.Position, root.CFrame.Position + Vector3.new(Camera.CFrame.LookVector.X, 0, Camera.CFrame.LookVector.Z))
-            end)
-        else
-            toggle.Text = "FLY: OFF"
-            toggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-            if flyConn then flyConn:Disconnect() end
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.Anchored = false
-            end
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.Text = "FLY FIX V2"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    title.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", title)
+
+    local toggle = Instance.new("TextButton", frame)
+    toggle.Size = UDim2.new(0.9, 0, 0, 35)
+    toggle.Position = UDim2.new(0.05, 0, 0.22, 0)
+    toggle.Text = "STATUS: OFF"
+    toggle.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    toggle.TextColor3 = Color3.new(1, 1, 1)
+    toggle.Font = Enum.Font.GothamMedium
+    Instance.new("UICorner", toggle)
+
+    local speedBox = Instance.new("TextBox", frame)
+    speedBox.Size = UDim2.new(0.9, 0, 0, 30)
+    speedBox.Position = UDim2.new(0.05, 0, 0.45, 0)
+    speedBox.Text = "50"
+    speedBox.PlaceholderText = "Speed..."
+    speedBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    speedBox.TextColor3 = Color3.new(1, 1, 1)
+    Instance.new("UICorner", speedBox)
+
+    -- Nút di chuyển bổ trợ cho Mobile
+    local upBtn = Instance.new("TextButton", frame)
+    upBtn.Size = UDim2.new(0.42, 0, 0, 40)
+    upBtn.Position = UDim2.new(0.05, 0, 0.65, 0)
+    upBtn.Text = "UP"
+    upBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    upBtn.TextColor3 = Color3.new(1, 1, 1)
+    Instance.new("UICorner", upBtn)
+
+    local downBtn = Instance.new("TextButton", frame)
+    downBtn.Size = UDim2.new(0.42, 0, 0, 40)
+    downBtn.Position = UDim2.new(0.53, 0, 0.65, 0)
+    downBtn.Text = "DOWN"
+    downBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    downBtn.TextColor3 = Color3.new(1, 1, 1)
+    Instance.new("UICorner", downBtn)
+
+    -- Sự kiện di chuyển Mobile
+    upBtn.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then moveState.up = true end end)
+    upBtn.InputEnded:Connect(function() moveState.up = false end)
+    downBtn.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then moveState.down = true end end)
+    downBtn.InputEnded:Connect(function() moveState.down = false end)
+
+    speedBox.FocusLost:Connect(function() getgenv().FlyConfig.Speed = tonumber(speedBox.Text) or 50 end)
+
+    return toggle
+end
+
+local function applyFly()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local root = char:WaitForChild("HumanoidRootPart")
+    local hum = char:WaitForChild("Humanoid")
+    
+    -- Xóa các lực cũ
+    for _, v in pairs(root:GetChildren()) do
+        if v:IsA("BodyVelocity") or v:IsA("BodyGyro") or v:IsA("LinearVelocity") or v:IsA("VectorForce") then
+            v:Destroy()
         end
     end
 
-    toggle.MouseButton1Click:Connect(toggleFly)
-    speedInput.FocusLost:Connect(function()
-        getgenv().FlySpeed = tonumber(speedInput.Text) or 50
+    local attachment = Instance.new("Attachment", root)
+    attachment.Name = "FlyAttachment"
+
+    local lv = Instance.new("LinearVelocity", root)
+    lv.Name = "FlyLinear"
+    lv.Attachment0 = attachment
+    lv.MaxForce = 9e9
+    lv.VectorVelocity = Vector3.new(0, 0, 0)
+
+    local bg = Instance.new("BodyGyro", root)
+    bg.Name = "FlyGyro"
+    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.P = 10000
+
+    task.spawn(function()
+        while getgenv().FlyConfig.Active and char.Parent do
+            local cameraCFrame = Camera.CFrame
+            local velocity = Vector3.new(0, 0, 0)
+
+            -- Điều khiển PC
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then velocity = velocity + cameraCFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then velocity = velocity - cameraCFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then velocity = velocity - cameraCFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then velocity = velocity + cameraCFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveState.up = true else if not UserInputService:IsTouchEnabled() then moveState.up = false end end
+
+            -- Điều khiển chung
+            if moveState.up then velocity = velocity + Vector3.new(0, 1, 0) end
+            if moveState.down then velocity = velocity - Vector3.new(0, 1, 0) end
+
+            -- Áp dụng vận tốc
+            if velocity.Magnitude > 0 then
+                lv.VectorVelocity = velocity.Unit * getgenv().FlyConfig.Speed
+            else
+                lv.VectorVelocity = Vector3.new(0, 0, 0)
+            end
+
+            -- Luôn giữ thẳng đứng và xoay theo Camera
+            bg.CFrame = cameraCFrame
+            
+            -- Chống rơi của game BRM5
+            root.Velocity = Vector3.new(0, 0.1, 0) 
+            
+            RunService.RenderStepped:Wait()
+        end
+        lv:Destroy()
+        bg:Destroy()
+        attachment:Destroy()
+        hum.PlatformStand = false
     end)
 end
 
-createUI()
-print("BRM5 Fly Fix Executed! Sử dụng UI bên trái màn hình.")
+local toggleBtn = createUI()
+toggleBtn.MouseButton1Click:Connect(function()
+    getgenv().FlyConfig.Active = not getgenv().FlyConfig.Active
+    if getgenv().FlyConfig.Active then
+        toggleBtn.Text = "STATUS: ON"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 60)
+        applyFly()
+    else
+        toggleBtn.Text = "STATUS: OFF"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    end
+end)
+
+print("BRM5 Fly v2 Fixed Loaded!")
