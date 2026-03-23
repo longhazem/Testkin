@@ -1,72 +1,69 @@
--- Khởi tạo cài đặt tốc độ (Bạn có thể thay đổi các giá trị này)
-local SpeedSettings = {
-    WalkSpeedMult = 2,    -- Gấp 2 lần tốc độ đi bộ mặc định
-    SprintSpeedMult = 3,  -- Gấp 3 lần tốc độ chạy nhanh mặc định
-    NoMovementPenalty = true -- Loại bỏ hình phạt giảm tốc độ khi trúng đạn/vác nặng
-}
+local PlayerService = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
-local function findModule(name)
-    local RF = game:GetService("ReplicatedFirst")
-    local RS = game:GetService("ReplicatedStorage")
-    local function search(parent)
-        if not parent then return end
-        for _, child in ipairs(parent:GetChildren()) do
-            if (child.Name:find(name) or child.Name:lower():find(name:lower())) and child:IsA("ModuleScript") then
-                return child
-            end
-            local found = search(child)
-            if found then return found end
-        end
-    end
-    return search(RF) or search(RS)
-end
+local LocalPlayer = PlayerService.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
-task.spawn(function()
-    local CharacterController = nil
-    while true do
-        if not CharacterController then
-            local mod = findModule("CharacterController")
-            if mod then
-                local success, result = pcall(require, mod)
-                if success and result and result.Update then
-                    CharacterController = result
-                    
-                    -- Bắt đầu Hook hàm Update để can thiệp tốc độ
-                    local oldUpdate = CharacterController.Update
-                    CharacterController.Update = function(self, inputVector, deltaTime)
-                        if not self or not self._localActor then 
-                            return oldUpdate(self, inputVector, deltaTime) 
-                        end
+local flyEnabled = false
+local flySpeed = 100
+local activationKey = Enum.KeyCode.E
 
-                        -- 1. Loại bỏ hình phạt di chuyển (nếu bật)
-                        if SpeedSettings.NoMovementPenalty then
-                            self._localActor.SpeedPenalty = 1
-                        end
+local XZ = Vector3.new(1, 0, 1)
+local YPlus = Vector3.new(0, 1, 0)
+local YMinus = Vector3.new(0, -1, 0)
 
-                        -- 2. Tính toán và áp dụng hệ số nhân tốc độ
-                        local baseWeight = self._weightMulti or 1
-                        local walkMult = SpeedSettings.WalkSpeedMult or 1
-                        local sprintMult = SpeedSettings.SprintSpeedMult or 1
-                        
-                        -- Kiểm tra đang chạy nhanh hay đi bộ để áp dụng đúng multiplier
-                        local activeMult = self.IsSprinting and sprintMult or walkMult
-
-                        -- Ghi đè trọng số di chuyển (weightMulti) để tăng tốc độ vật lý
-                        self._weightMulti = baseWeight * activeMult
-
-                        -- Chạy hàm gốc với tốc độ đã được sửa đổi
-                        local res = oldUpdate(self, inputVector, deltaTime)
-
-                        -- Khôi phục lại trọng số gốc để tránh lỗi logic game ở frame sau
-                        self._weightMulti = baseWeight
-                        
-                        return res
-                    end
-                    print("✓ Đã tách và kích hoạt logic Speed thành công!")
-                    break 
+local noClipConnection
+local function ToggleNoClip(state)
+    if state then
+        noClipConnection = RunService.Stepped:Connect(function()
+            if not LocalPlayer.Character then return end
+            for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
                 end
             end
+        end)
+    else
+        if noClipConnection then
+            noClipConnection:Disconnect()
+            noClipConnection = nil
         end
-        task.wait(2)
+    end
+end
+
+local function GetFlyVelocity()
+    local LookVector = Camera.CFrame.LookVector
+    local RightVector = Camera.CFrame.RightVector
+    
+    local forward = UserInputService:IsKeyDown(Enum.KeyCode.W) and LookVector or Vector3.zero
+    local backward = UserInputService:IsKeyDown(Enum.KeyCode.S) and -LookVector or Vector3.zero
+    local left = UserInputService:IsKeyDown(Enum.KeyCode.A) and -RightVector or Vector3.zero
+    local right = UserInputService:IsKeyDown(Enum.KeyCode.D) and RightVector or Vector3.zero
+    local up = UserInputService:IsKeyDown(Enum.KeyCode.Space) and YPlus or Vector3.zero
+    local down = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and YMinus or Vector3.zero
+    
+    local dir = forward + backward + left + right + up + down
+    return dir.Magnitude > 0 and dir.Unit or Vector3.zero
+end
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == activationKey then
+        flyEnabled = not flyEnabled
+        ToggleNoClip(flyEnabled)
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if flyEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local root = LocalPlayer.Character.HumanoidRootPart
+        local velocity = GetFlyVelocity() * flySpeed
+        root.Velocity = velocity
+        
+        if velocity.Magnitude == 0 then
+            root.Velocity = Vector3.new(0, 0, 0)
+        end
     end
 end)
