@@ -1,100 +1,120 @@
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local PlayerService = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
+--------------------------------------------------
+-- FLY BYPASS CODE
+--------------------------------------------------
+local flying = false
+local flySpeed = 50
+local flyHrp = hrp
+local control = {f = 0, b = 0, l = 0, r = 0, u = 0, d = 0}
+local bg, bv
+local freeze = false
 
-local LocalPlayer = PlayerService.LocalPlayer
-local Camera = Workspace.CurrentCamera
+player.CharacterAdded:Connect(function(char)
+	flyHrp = char:WaitForChild("HumanoidRootPart")
+end)
 
-local flyEnabled = false
-local flySpeed = 300
-local walkSpeedValue = 400
-
-local ScreenGui = Instance.new("ScreenGui")
-local MainFrame = Instance.new("Frame")
-local Title = Instance.new("TextLabel")
-local FlyStatus = Instance.new("TextLabel")
-local SpeedInput = Instance.new("TextBox")
-
-ScreenGui.Parent = game:GetService("CoreGui")
-MainFrame.Parent = ScreenGui
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-MainFrame.Position = UDim2.new(0, 50, 0.5, -60)
-MainFrame.Size = UDim2.new(0, 200, 0, 130)
-MainFrame.BorderSizePixel = 0
-
-Title.Parent = MainFrame
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "TOKAI BYPASS UI"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-
-FlyStatus.Parent = MainFrame
-FlyStatus.Position = UDim2.new(0, 0, 0, 45)
-FlyStatus.Size = UDim2.new(1, 0, 0, 30)
-FlyStatus.Text = "Fly: OFF [E]"
-FlyStatus.TextColor3 = Color3.fromRGB(255, 100, 100)
-FlyStatus.BackgroundTransparency = 1
-
-SpeedInput.Parent = MainFrame
-SpeedInput.Position = UDim2.new(0, 15, 0, 85)
-SpeedInput.Size = UDim2.new(0, 170, 0, 30)
-SpeedInput.Text = "200"
-SpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-
-local function GetModules()
-    local modules = {}
-    for _, v in pairs(getreg()) do
-        if type(v) == "table" and rawget(v, "Update") then
-            table.insert(modules, v)
-        end
-    end
-    return modules
+local function getNextPositionUnder()
+	if not flyHrp then return nil end
+	local origin = flyHrp.Position
+	local direction = Vector3.new(0, -1000, 0)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterDescendantsInstances = {player.Character}
+	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+	local result = workspace:Raycast(origin, direction, rayParams)
+	if result then
+		return result.Position + Vector3.new(0, 3, 0)
+	end
+	return nil
 end
 
-task.spawn(function()
-    while task.wait(1) do
-        for _, mod in pairs(GetModules()) do
-            -- Hook vao ControllerClass de chinh toc do
-            if mod.LateUpdate then
-                local old = mod.LateUpdate
-                mod.LateUpdate = function(self, ...)
-                    self.Speed = tonumber(SpeedInput.Text) or walkSpeedValue
-                    return old(self, ...)
-                end
-            end
-        end
-    end
+local function startFly()
+	if flying or not flyHrp then return end
+	flying = true
+	bg = Instance.new("BodyGyro", flyHrp)
+	bg.P = 9e4
+	bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	bg.CFrame = flyHrp.CFrame
+	bv = Instance.new("BodyVelocity", flyHrp)
+	bv.Velocity = Vector3.new()
+	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
+	runService.RenderStepped:Connect(function()
+		if flying and flyHrp and bg and bv then
+			bg.CFrame = workspace.CurrentCamera.CFrame
+			if not freeze then
+				local move = (workspace.CurrentCamera.CFrame.LookVector * (control.f + control.b) + 
+				workspace.CurrentCamera.CFrame.RightVector * (control.r + control.l) + 
+				Vector3.new(0, control.u + control.d, 0))
+				
+				if move.Magnitude > 0 then
+					move = move.Unit * flySpeed
+				end
+				bv.Velocity = move
+			else
+				bv.Velocity = Vector3.new()
+			end
+		end
+	end)
+
+	coroutine.wrap(function()
+		while flying do
+			local oldPos = flyHrp.Position
+			local nextPos = getNextPositionUnder()
+			if nextPos then
+				flyHrp.CFrame = CFrame.new(nextPos)
+				freeze = true
+				wait(1)
+				flyHrp.CFrame = CFrame.new(oldPos)
+				freeze = false
+			end
+			wait(2)
+		end
+	end)()
+end
+
+local function stopFly()
+	flying = false
+	if bg then bg:Destroy() bg = nil end
+	if bv then bv:Destroy() bv = nil end
+	freeze = false
+end
+
+userInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.W then control.f = 1 end
+	if input.KeyCode == Enum.KeyCode.S then control.b = -1 end
+	if input.KeyCode == Enum.KeyCode.A then control.l = -1 end
+	if input.KeyCode == Enum.KeyCode.D then control.r = 1 end
+	if input.KeyCode == Enum.KeyCode.Space then control.u = 1 end
+	if input.KeyCode == Enum.KeyCode.LeftShift then control.d = -1 end
 end)
 
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.E then
-        flyEnabled = not flyEnabled
-        FlyStatus.Text = flyEnabled and "Fly: ON" or "Fly: OFF [E]"
-        FlyStatus.TextColor3 = flyEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 100)
-    end
+userInputService.InputEnded:Connect(function(input, gp)
+	if input.KeyCode == Enum.KeyCode.W then control.f = 0 end
+	if input.KeyCode == Enum.KeyCode.S then control.b = 0 end
+	if input.KeyCode == Enum.KeyCode.A then control.l = 0 end
+	if input.KeyCode == Enum.KeyCode.D then control.r = 0 end
+	if input.KeyCode == Enum.KeyCode.Space then control.u = 0 end
+	if input.KeyCode == Enum.KeyCode.LeftShift then control.d = 0 end
 end)
 
--- Fly bang cach thay doi CFrame truc tiep (Bypass BasePart)
-RunService.RenderStepped:Connect(function()
-    if flyEnabled and LocalPlayer.Character and LocalPlayer.Character.PrimaryPart then
-        local ppart = LocalPlayer.Character.PrimaryPart
-        local move = Vector3.new(0,0,0)
-        
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0, 1, 0) end
-        
-        if move.Magnitude > 0 then
-            ppart.CFrame = ppart.CFrame + (move * flySpeed)
-        else
-            -- Giu nguyen vi tri de khong bi roi do trong luc custom cua game
-            ppart.Velocity = Vector3.zero
-        end
-    end
+local flyBtn = Instance.new("TextButton", mainFrame)
+flyBtn.Size = UDim2.new(0.48, 0, 0, 50)
+flyBtn.Position = UDim2.new(0.5, 0, 0, 40)
+flyBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+flyBtn.Font = Enum.Font.GothamSemibold
+flyBtn.TextSize = 16
+flyBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+flyBtn.Text = "Fly Bypass: Inaktiv"
+Instance.new("UICorner", flyBtn).CornerRadius = UDim.new(0, 8)
+
+flyBtn.MouseButton1Click:Connect(function()
+	if flying then
+		stopFly()
+		flyBtn.Text = "Fly Bypass: Inaktiv"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	else
+		startFly()
+		flyBtn.Text = "Fly Bypass: Aktiv"
+		flyBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+	end
 end)
