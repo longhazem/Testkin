@@ -13,11 +13,11 @@ local Options = {
     ShowFov = true,
     FovRadius = 40,
     ESP = true,
-    AimPart = "Head",
+    AimPart = "Head", -- "Head" hoặc "Torso"
     LockAimButton = false
 }
 
--- Khởi tạo vòng FOV (Rỗng)
+-- Khởi tạo vòng FOV
 local Drawings = {FovOutline = nil}
 function AddDrawing(Type, Properties)
     local DrawingObject = Drawing.new(Type)
@@ -45,7 +45,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ---------------------------------------------------------
--- LOGIC ESP ĐÃ SỬA LỖI PBR (NPC "Male")
+-- LOGIC ESP NPC
 ---------------------------------------------------------
 local function clearESP()
     for _, object in pairs(Workspace:GetDescendants()) do
@@ -94,7 +94,7 @@ task.spawn(function()
 end)
 
 ---------------------------------------------------------
--- UI GIAO DIỆN CHÍNH (Tối ưu Mobile)
+-- UI MENU CHÍNH
 ---------------------------------------------------------
 local ScreenGui = Instance.new("ScreenGui")
 local success = pcall(function() ScreenGui.Parent = CoreGui end)
@@ -119,34 +119,27 @@ Title.Font = Enum.Font.GothamBold
 Title.TextSize = 14
 Title.Parent = MainFrame
 
--- Nút Silent Aim
-local ToggleAimBtn = Instance.new("TextButton")
-ToggleAimBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ToggleAimBtn.Position = UDim2.new(0.05, 0, 0, 40)
-ToggleAimBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-ToggleAimBtn.Text = "Silent Aim: ON"
-ToggleAimBtn.TextColor3 = Color3.new(1, 1, 1)
-ToggleAimBtn.Font = Enum.Font.GothamSemibold
-ToggleAimBtn.Parent = MainFrame
-Instance.new("UICorner", ToggleAimBtn).CornerRadius = UDim.new(0, 4)
+local function createBtn(text, pos, color)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 30)
+    btn.Position = pos
+    btn.BackgroundColor3 = color
+    btn.Text = text
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.Parent = MainFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    return btn
+end
 
+local ToggleAimBtn = createBtn("Silent Aim: ON", UDim2.new(0.05, 0, 0, 40), Color3.fromRGB(0, 150, 0))
 ToggleAimBtn.MouseButton1Click:Connect(function()
     Options.SilentAim = not Options.SilentAim
     ToggleAimBtn.Text = Options.SilentAim and "Silent Aim: ON" or "Silent Aim: OFF"
     ToggleAimBtn.BackgroundColor3 = Options.SilentAim and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
 end)
 
--- Nút ESP
-local ToggleEspBtn = Instance.new("TextButton")
-ToggleEspBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ToggleEspBtn.Position = UDim2.new(0.05, 0, 0, 75)
-ToggleEspBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-ToggleEspBtn.Text = "NPC ESP: ON"
-ToggleEspBtn.TextColor3 = Color3.new(1, 1, 1)
-ToggleEspBtn.Font = Enum.Font.GothamSemibold
-ToggleEspBtn.Parent = MainFrame
-Instance.new("UICorner", ToggleEspBtn).CornerRadius = UDim.new(0, 4)
-
+local ToggleEspBtn = createBtn("NPC ESP: ON", UDim2.new(0.05, 0, 0, 75), Color3.fromRGB(0, 150, 0))
 ToggleEspBtn.MouseButton1Click:Connect(function()
     Options.ESP = not Options.ESP
     ToggleEspBtn.Text = Options.ESP and "NPC ESP: ON" or "NPC ESP: OFF"
@@ -154,24 +147,13 @@ ToggleEspBtn.MouseButton1Click:Connect(function()
     if not Options.ESP then clearESP() else highlightMaleModels() end
 end)
 
--- Nút FOV
-local ToggleFovBtn = Instance.new("TextButton")
-ToggleFovBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ToggleFovBtn.Position = UDim2.new(0.05, 0, 0, 110)
-ToggleFovBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-ToggleFovBtn.Text = "Show FOV: ON"
-ToggleFovBtn.TextColor3 = Color3.new(1, 1, 1)
-ToggleFovBtn.Font = Enum.Font.GothamSemibold
-ToggleFovBtn.Parent = MainFrame
-Instance.new("UICorner", ToggleFovBtn).CornerRadius = UDim.new(0, 4)
-
+local ToggleFovBtn = createBtn("Show FOV: ON", UDim2.new(0.05, 0, 0, 110), Color3.fromRGB(0, 150, 0))
 ToggleFovBtn.MouseButton1Click:Connect(function()
     Options.ShowFov = not Options.ShowFov
     ToggleFovBtn.Text = Options.ShowFov and "Show FOV: ON" or "Show FOV: OFF"
     ToggleFovBtn.BackgroundColor3 = Options.ShowFov and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
 end)
 
--- Slider FOV
 local SliderLabel = Instance.new("TextLabel")
 SliderLabel.Size = UDim2.new(0.9, 0, 0, 20)
 SliderLabel.Position = UDim2.new(0.05, 0, 0, 150)
@@ -194,7 +176,6 @@ SliderFill.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
 SliderFill.Parent = SliderBG
 Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(1, 0)
 
--- Logic Slider (Mobile Fix)
 local isSiding = false
 local function UpdateSlider(input)
     local sizeX = math.clamp((input.Position.X - SliderBG.AbsolutePosition.X) / SliderBG.AbsoluteSize.X, 0, 1)
@@ -224,24 +205,13 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Nút Khóa Button Head/Thân
-local ToggleLockBtn = Instance.new("TextButton")
-ToggleLockBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ToggleLockBtn.Position = UDim2.new(0.05, 0, 0, 205)
-ToggleLockBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-ToggleLockBtn.Text = "Lock Aim Button: OFF"
-ToggleLockBtn.TextColor3 = Color3.new(1, 1, 1)
-ToggleLockBtn.Font = Enum.Font.GothamSemibold
-ToggleLockBtn.Parent = MainFrame
-Instance.new("UICorner", ToggleLockBtn).CornerRadius = UDim.new(0, 4)
-
+local ToggleLockBtn = createBtn("Lock Aim Button: OFF", UDim2.new(0.05, 0, 0, 205), Color3.fromRGB(150, 0, 0))
 ToggleLockBtn.MouseButton1Click:Connect(function()
     Options.LockAimButton = not Options.LockAimButton
     ToggleLockBtn.Text = Options.LockAimButton and "Lock Aim Button: ON" or "Lock Aim Button: OFF"
     ToggleLockBtn.BackgroundColor3 = Options.LockAimButton and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
 end)
 
--- Draggable Menu Chính
 local dragToggle, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input)
     if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not isSiding then
@@ -265,7 +235,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 ---------------------------------------------------------
--- GIAO DIỆN NÚT ĐỔI VỊ TRÍ BẮN (HEAD/TORSO) TRÔI NỔI (ĐÃ FIX LỖI)
+-- NÚT CHUYỂN HEAD/BODY (FLOAT)
 ---------------------------------------------------------
 local FloatingBtn = Instance.new("TextButton")
 FloatingBtn.Size = UDim2.new(0, 100, 0, 45)
@@ -284,7 +254,6 @@ local isPressingFloatBtn = false
 local floatDragStart, floatStartPos
 local hasDraggedFloat = false
 
--- Bắt đầu chạm VÀO nút nổi
 FloatingBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         isPressingFloatBtn = true
@@ -294,10 +263,8 @@ FloatingBtn.InputBegan:Connect(function(input)
     end
 end)
 
--- Kéo rê trên màn hình
 UserInputService.InputChanged:Connect(function(input)
     if isPressingFloatBtn and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        -- Chỉ cho phép nút dịch chuyển nếu CHƯA BẬT KHÓA NÚT
         if not Options.LockAimButton then
             hasDraggedFloat = true
             local delta = input.Position - floatDragStart
@@ -306,15 +273,10 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Nhả chạm ra (Chỉ xử lý nếu ngón tay lúc đầu nằm trên FloatingBtn)
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        
-        -- Kiểm tra xem trước đó người dùng có thực sự bấm vào nút không
         if isPressingFloatBtn then
             isPressingFloatBtn = false
-            
-            -- Nếu chỉ chạm (không kéo đi đâu xa) thì sẽ thực hiện lệnh đổi vị trí bắn
             if not hasDraggedFloat then
                 if Options.AimPart == "Head" then
                     Options.AimPart = "Torso"
@@ -332,7 +294,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 ---------------------------------------------------------
--- LOGIC SILENT AIM (Cập nhật Head/Torso)
+-- LOGIC SILENT AIM (CẬP NHẬT TÌM KIẾM TORSO)
 ---------------------------------------------------------
 local Functions = {
     GetClients = filtergc('function', {Name = 'GetClients', Constants = {'Clients'}}, false),
@@ -352,6 +314,19 @@ local OldClients; OldClients = hookfunction(Functions.GetClients, function(Self)
     ClientService = Self; return OldClients(Self)
 end)
 
+-- Hàm tìm bộ phận mục tiêu (Sửa lỗi không nhận Torso)
+local function GetTargetPart(Data)
+    if not Data or not Data.Actor or not Data.Actor.Parts then return nil end
+    
+    if Options.AimPart == "Head" then
+        return Data.Actor.Parts.Head
+    else
+        -- Thử tìm mọi bộ phận liên quan đến thân
+        local Parts = Data.Actor.Parts
+        return Parts.Torso or Parts.UpperTorso or Parts.HumanoidRootPart or Parts.LowerTorso
+    end
+end
+
 function GetClosest()
     local ClosestPlayer, ClosestData, ClosestDistance = nil, nil, math.huge
     if not ClientService then return end
@@ -361,17 +336,10 @@ function GetClosest()
         if not Data.Actor or not Data.Actor.Alive then continue end
         if Data.Squad == ClientService.LocalClient.Squad then continue end
 
-        local targetPartPos = nil
-        -- Chọn Head hoặc Thân theo Tùy chọn của người chơi
-        if Options.AimPart == "Head" and Data.Actor.Parts.Head then
-            targetPartPos = Data.Actor.Parts.Head.Position
-        elseif Options.AimPart == "Torso" and Data.Actor.Parts.Torso then
-            targetPartPos = Data.Actor.Parts.Torso.Position
-        end
-        
-        if not targetPartPos then continue end
+        local targetPart = GetTargetPart(Data)
+        if not targetPart then continue end
 
-        local Position, OnScreen = Camera:WorldToViewportPoint(targetPartPos)
+        local Position, OnScreen = Camera:WorldToViewportPoint(targetPart.Position)
         if not OnScreen then continue end
 
         local Distance = (Vector2.new(Position.X, Position.Y) - (Camera.ViewportSize / 2)).Magnitude
@@ -387,10 +355,9 @@ local OldMuzzle; OldMuzzle = hookfunction(Functions.GetMuzzleCFrame, function(Se
     if Options.SilentAim and not Cast and Origin then
         local Player, Data = GetClosest()
         if Player then
-            -- Tính toán lấy Aim Part chuẩn
-            local targetAimPart = Options.AimPart == "Head" and Data.Actor.Parts.Head or Data.Actor.Parts.Torso
-            if targetAimPart then
-                return CFrame.new(Origin.Position, targetAimPart.Position), Barrel, CameraCF
+            local targetPart = GetTargetPart(Data)
+            if targetPart then
+                return CFrame.new(Origin.Position, targetPart.Position), Barrel, CameraCF
             end
         end
     end
