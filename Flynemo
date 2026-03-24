@@ -1,64 +1,56 @@
--- ========================================================================= --
--- BƯỚC 1: TẠO GIAO DIỆN (UI) TRONG PARVUS HUB
--- Tìm dòng chữ `Window:AddTab` trong file script BRM5 gốc của bạn.
--- Hãy dán đoạn code này ngay bên dưới một Tab nào đó (ví dụ Tab Misc hoặc LocalPlayer)
--- ========================================================================= --
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- Tạo một Tab mới tên là "Character" (Nếu bạn đã có Tab này rồi thì bỏ qua dòng này)
-local CharacterTab = Window:AddTab({Name = "Character"})
-
--- Tạo một khu vực tên là "Movement"
-local MovementSection = CharacterTab:AddSection({Name = "Movement", Side = "Left"})
-
--- Nút Bật/Tắt WalkSpeed
-MovementSection:AddToggle({
-    Name = "Enable WalkSpeed Bypass", 
-    Flag = "BRM5/WalkSpeed/Enabled"
+local Window = Rayfield:CreateWindow({
+   Name = "TOKAI Hub | Speed Bypass",
+   LoadingTitle = "Loading Script...",
+   LoadingSubtitle = "by LONGTOKAI",
+   ConfigurationSaving = { Enabled = false }
 })
 
--- Thanh kéo tốc độ (Min là 16 là tốc độ gốc, Max là 100. Có thể click vào số để nhập tay)
-MovementSection:AddSlider({
-    Name = "Speed Value", 
-    Default = 35, 
-    Min = 16, 
-    Max = 100, 
-    Flag = "BRM5/WalkSpeed/Value"
+local Tab = Window:CreateTab("Main", 4483362458)
+
+local WalkSpeedSettings = {
+    Enabled = false,
+    Speed = 35
+}
+
+Tab:CreateToggle({
+   Name = "Bật/Tắt Tốc Độ",
+   CurrentValue = false,
+   Callback = function(Value)
+      WalkSpeedSettings.Enabled = Value
+   end,
 })
 
-
--- ========================================================================= --
--- BƯỚC 2: XỬ LÝ LOGIC CHẠY NHANH
--- Hãy dán toàn bộ đoạn code dưới đây xuống TẬN CÙNG (Dưới cùng) của file script.
--- Nó sẽ tự động lấy dữ liệu từ UI bạn vừa tạo ở trên để hoạt động.
--- ========================================================================= --
+Tab:CreateInput({
+   Name = "Nhập Tốc Độ",
+   PlaceholderText = "Mặc định: 16 | Hiện tại: 35",
+   RemoveTextAfterFocusLost = false,
+   Callback = function(Text)
+      local num = tonumber(Text)
+      if num then
+          WalkSpeedSettings.Speed = num
+      else
+          Rayfield:Notify({Title = "Lỗi", Content = "Vui lòng chỉ nhập số!", Duration = 3})
+      end
+   end,
+})
 
 local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = game:GetService("Players").LocalPlayer
 
 RunService.Heartbeat:Connect(function(Delta)
-    -- Kiểm tra xem UI Toggle có đang được BẬT không (Thông qua Flag của Parvus)
-    if Window.Flags and Window.Flags["BRM5/WalkSpeed/Enabled"] then
-        local Character = LocalPlayer.Character
-        if not Character then return end
-        
-        local Humanoid = Character:FindFirstChild("Humanoid")
-        local RootPart = Character:FindFirstChild("HumanoidRootPart")
-        
-        -- Nếu nhân vật còn sống
-        if Humanoid and RootPart and Humanoid.Health > 0 then
-            -- Lấy tốc độ từ thanh kéo (Slider) trên UI
-            local TargetSpeed = Window.Flags["BRM5/WalkSpeed/Value"] or 16
-            
-            -- Nếu người chơi đang bấm phím di chuyển
-            if Humanoid.MoveDirection.Magnitude > 0 then
-                -- Tính toán tốc độ cần bù trừ
-                local SpeedDifference = TargetSpeed - Humanoid.WalkSpeed
-                
-                -- Đẩy CFrame về phía trước
-                if SpeedDifference > 0 then
-                    RootPart.CFrame = RootPart.CFrame + (Humanoid.MoveDirection * (SpeedDifference * Delta))
-                end
+    if not WalkSpeedSettings.Enabled then return end
+    
+    local Character = LocalPlayer.Character
+    local Humanoid = Character and Character:FindFirstChild("Humanoid")
+    local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+    
+    if Humanoid and RootPart and Humanoid.Health > 0 then
+        if Humanoid.MoveDirection.Magnitude > 0 then
+            local SpeedDifference = (WalkSpeedSettings.Speed - Humanoid.WalkSpeed)
+            if SpeedDifference > 0 then
+                RootPart.CFrame = RootPart.CFrame + (Humanoid.MoveDirection * (SpeedDifference * Delta))
             end
         end
     end
