@@ -11,7 +11,7 @@ local runService = game:GetService("RunService")
 local uis = game:GetService("UserInputService")
 local camera = workspace.CurrentCamera
 
-local flying = false
+local flying = true
 local flySpeed = 200
 local flyHrp = nil
 local control = {f = 0, b = 0, l = 0, r = 0, u = 0, d = 0}
