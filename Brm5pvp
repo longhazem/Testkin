@@ -12,9 +12,9 @@ local Options = {
     SilentAim = true,
     ShowFov = true,
     FovRadius = 40,
-    ESP = true, -- Mặc định bật ESP
-    AimPart = "Head", -- Mặc định bắn vào Đầu (Head hoặc Torso)
-    LockAimButton = false -- Khóa nút kéo thả (Mặc định không khóa)
+    ESP = true,
+    AimPart = "Head",
+    LockAimButton = false
 }
 
 -- Khởi tạo vòng FOV (Rỗng)
@@ -49,7 +49,6 @@ end)
 ---------------------------------------------------------
 local function clearESP()
     for _, object in pairs(Workspace:GetDescendants()) do
-        -- Xóa các Box ESP cũ (nếu có)
         if object.Name == "ESP_Visual" then
             object:Destroy()
         end
@@ -64,19 +63,18 @@ local function highlightMaleModels()
 
     for _, object in pairs(Workspace:GetChildren()) do
         if object:IsA("Model") and object.Name == "Male" then
-            -- Thay vì dùng Highlight gây lỗi texture, ta dùng BillboardGui tạo Box ESP
             local targetPart = object:FindFirstChild("HumanoidRootPart") or object:FindFirstChild("Torso") or object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart")
             
             if targetPart and not object:FindFirstChild("ESP_Visual") then
                 local bgui = Instance.new("BillboardGui")
                 bgui.Name = "ESP_Visual"
                 bgui.Adornee = targetPart
-                bgui.Size = UDim2.new(4.5, 0, 6, 0) -- Kích thước khung Box bao quanh NPC
-                bgui.AlwaysOnTop = true -- Nhìn xuyên tường
+                bgui.Size = UDim2.new(4.5, 0, 6, 0)
+                bgui.AlwaysOnTop = true
                 
                 local box = Instance.new("Frame")
                 box.Size = UDim2.new(1, 0, 1, 0)
-                box.BackgroundTransparency = 0.75 -- Độ trong suốt của khung
+                box.BackgroundTransparency = 0.75
                 box.BackgroundColor3 = Color3.fromRGB(0, 255, 200)
                 box.BorderSizePixel = 1.5
                 box.BorderColor3 = Color3.fromRGB(255, 255, 255)
@@ -88,7 +86,6 @@ local function highlightMaleModels()
     end
 end
 
--- Chạy vòng lặp quét ESP trong luồng riêng
 task.spawn(function()
     while true do
         highlightMaleModels()
@@ -104,7 +101,7 @@ local success = pcall(function() ScreenGui.Parent = CoreGui end)
 if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 250, 0, 260) -- Tăng chiều cao để chứa thêm nút Khóa
+MainFrame.Size = UDim2.new(0, 250, 0, 260)
 MainFrame.Position = UDim2.new(0.5, -125, 0.5, -130)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MainFrame.BorderSizePixel = 0
@@ -268,7 +265,7 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 ---------------------------------------------------------
--- GIAO DIỆN NÚT ĐỔI VỊ TRÍ BẮN (HEAD/TORSO) TRÔI NỔI
+-- GIAO DIỆN NÚT ĐỔI VỊ TRÍ BẮN (HEAD/TORSO) TRÔI NỔI (ĐÃ FIX LỖI)
 ---------------------------------------------------------
 local FloatingBtn = Instance.new("TextButton")
 FloatingBtn.Size = UDim2.new(0, 100, 0, 45)
@@ -283,45 +280,51 @@ FloatingBtn.Parent = ScreenGui
 Instance.new("UICorner", FloatingBtn).CornerRadius = UDim.new(0, 8)
 Instance.new("UIStroke", FloatingBtn).Thickness = 2
 
-local floatDragToggle, floatDragStart, floatStartPos
+local isPressingFloatBtn = false
+local floatDragStart, floatStartPos
 local hasDraggedFloat = false
 
--- Bắt đầu chạm vào nút nổi
+-- Bắt đầu chạm VÀO nút nổi
 FloatingBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isPressingFloatBtn = true
+        floatDragStart = input.Position
+        floatStartPos = FloatingBtn.Position
+        hasDraggedFloat = false
+    end
+end)
+
+-- Kéo rê trên màn hình
+UserInputService.InputChanged:Connect(function(input)
+    if isPressingFloatBtn and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        -- Chỉ cho phép nút dịch chuyển nếu CHƯA BẬT KHÓA NÚT
         if not Options.LockAimButton then
-            floatDragToggle = true
-            floatDragStart = input.Position
-            floatStartPos = FloatingBtn.Position
-            hasDraggedFloat = false
+            hasDraggedFloat = true
+            local delta = input.Position - floatDragStart
+            FloatingBtn.Position = UDim2.new(floatStartPos.X.Scale, floatStartPos.X.Offset + delta.X, floatStartPos.Y.Scale, floatStartPos.Y.Offset + delta.Y)
         end
     end
 end)
 
--- Kéo rê nút nổi
-UserInputService.InputChanged:Connect(function(input)
-    if floatDragToggle and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        hasDraggedFloat = true
-        local delta = input.Position - floatDragStart
-        FloatingBtn.Position = UDim2.new(floatStartPos.X.Scale, floatStartPos.X.Offset + delta.X, floatStartPos.Y.Scale, floatStartPos.Y.Offset + delta.Y)
-    end
-end)
-
--- Nhả chạm ra
+-- Nhả chạm ra (Chỉ xử lý nếu ngón tay lúc đầu nằm trên FloatingBtn)
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        floatDragToggle = false
         
-        -- Nếu chỉ chạm (không kéo) thì sẽ thực hiện lệnh đổi vị trí bắn
-        if not hasDraggedFloat then
-            if Options.AimPart == "Head" then
-                Options.AimPart = "Torso"
-                FloatingBtn.Text = "Aim: BODY"
-                FloatingBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 255)
-            else
-                Options.AimPart = "Head"
-                FloatingBtn.Text = "Aim: HEAD"
-                FloatingBtn.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
+        -- Kiểm tra xem trước đó người dùng có thực sự bấm vào nút không
+        if isPressingFloatBtn then
+            isPressingFloatBtn = false
+            
+            -- Nếu chỉ chạm (không kéo đi đâu xa) thì sẽ thực hiện lệnh đổi vị trí bắn
+            if not hasDraggedFloat then
+                if Options.AimPart == "Head" then
+                    Options.AimPart = "Torso"
+                    FloatingBtn.Text = "Aim: BODY"
+                    FloatingBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 255)
+                else
+                    Options.AimPart = "Head"
+                    FloatingBtn.Text = "Aim: HEAD"
+                    FloatingBtn.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
+                end
             end
         end
         hasDraggedFloat = false
