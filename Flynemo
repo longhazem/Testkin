@@ -1,120 +1,113 @@
---------------------------------------------------
--- FLY BYPASS CODE
---------------------------------------------------
+--[[
+    FINAL FLY SCRIPT (STABLE & BYPASS)
+    - Hướng dẫn: Nhấn phím 'F' để Bật/Tắt bay.
+    - Điều khiển: W,A,S,D, Space (Lên), L-Shift (Xuống).
+]]
+
+local player = game:GetService("Players").LocalPlayer
+local mouse = player:GetMouse()
+local runService = game:GetService("RunService")
+local uis = game:GetService("UserInputService")
+
 local flying = false
-local flySpeed = 50
-local flyHrp = hrp
+local speed = 200
+local bv, bg
 local control = {f = 0, b = 0, l = 0, r = 0, u = 0, d = 0}
-local bg, bv
-local freeze = false
 
-player.CharacterAdded:Connect(function(char)
-	flyHrp = char:WaitForChild("HumanoidRootPart")
-end)
-
-local function getNextPositionUnder()
-	if not flyHrp then return nil end
-	local origin = flyHrp.Position
-	local direction = Vector3.new(0, -1000, 0)
-	local rayParams = RaycastParams.new()
-	rayParams.FilterDescendantsInstances = {player.Character}
-	rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-	local result = workspace:Raycast(origin, direction, rayParams)
-	if result then
-		return result.Position + Vector3.new(0, 3, 0)
-	end
-	return nil
-end
-
+-- Hàm tạo các đối tượng vật lý để bay
 local function startFly()
-	if flying or not flyHrp then return end
-	flying = true
-	bg = Instance.new("BodyGyro", flyHrp)
-	bg.P = 9e4
-	bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-	bg.CFrame = flyHrp.CFrame
-	bv = Instance.new("BodyVelocity", flyHrp)
-	bv.Velocity = Vector3.new()
-	bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    local char = player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
 
-	runService.RenderStepped:Connect(function()
-		if flying and flyHrp and bg and bv then
-			bg.CFrame = workspace.CurrentCamera.CFrame
-			if not freeze then
-				local move = (workspace.CurrentCamera.CFrame.LookVector * (control.f + control.b) + 
-				workspace.CurrentCamera.CFrame.RightVector * (control.r + control.l) + 
-				Vector3.new(0, control.u + control.d, 0))
-				
-				if move.Magnitude > 0 then
-					move = move.Unit * flySpeed
-				end
-				bv.Velocity = move
-			else
-				bv.Velocity = Vector3.new()
-			end
-		end
-	end)
+    flying = true
+    
+    -- Giữ nhân vật không bị xoay tròn
+    bg = Instance.new("BodyGyro")
+    bg.P = 9e4
+    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.CFrame = hrp.CFrame
+    bg.Parent = hrp
 
-	coroutine.wrap(function()
-		while flying do
-			local oldPos = flyHrp.Position
-			local nextPos = getNextPositionUnder()
-			if nextPos then
-				flyHrp.CFrame = CFrame.new(nextPos)
-				freeze = true
-				wait(1)
-				flyHrp.CFrame = CFrame.new(oldPos)
-				freeze = false
-			end
-			wait(2)
-		end
-	end)()
+    -- Tạo lực đẩy di chuyển
+    bv = Instance.new("BodyVelocity")
+    bv.Velocity = Vector3.new(0, 0, 0)
+    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    bv.Parent = hrp
+
+    -- Vòng lặp cập nhật vị trí
+    task.spawn(function()
+        while flying do
+            runService.RenderStepped:Wait()
+            if hrp and bg and bv then
+                -- Luôn xoay theo hướng Camera
+                bg.CFrame = workspace.CurrentCamera.CFrame
+                
+                -- Tính toán hướng di chuyển
+                local camera = workspace.CurrentCamera
+                local moveDir = (camera.CFrame.LookVector * (control.f + control.b) + 
+                                camera.CFrame.RightVector * (control.r + control.l) + 
+                                Vector3.new(0, control.u + control.d, 0))
+                
+                if moveDir.Magnitude > 0 then
+                    bv.Velocity = moveDir.Unit * speed
+                else
+                    bv.Velocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end
+    end)
+    
+    -- Cơ chế Bypass: Nháy xuống đất để tránh Anti-Cheat (giống trong ảnh bạn gửi)
+    task.spawn(function()
+        while flying do
+            task.wait(2) -- Cứ mỗi 2 giây thực hiện nháy 1 lần
+            if flying and hrp then
+                local oldPos = hrp.CFrame
+                -- Bắn tia laser tìm mặt đất
+                local ray = Ray.new(hrp.Position, Vector3.new(0, -500, 0))
+                local hit, pos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
+                
+                if hit then
+                    hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0)) -- Chạm đất
+                    task.wait(0.1)
+                    hrp.CFrame = oldPos -- Quay lại vị trí bay
+                end
+            end
+        end
+    end)
 end
 
 local function stopFly()
-	flying = false
-	if bg then bg:Destroy() bg = nil end
-	if bv then bv:Destroy() bv = nil end
-	freeze = false
+    flying = false
+    if bg then bg:Destroy() end
+    if bv then bv:Destroy() end
 end
 
-userInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.KeyCode == Enum.KeyCode.W then control.f = 1 end
-	if input.KeyCode == Enum.KeyCode.S then control.b = -1 end
-	if input.KeyCode == Enum.KeyCode.A then control.l = -1 end
-	if input.KeyCode == Enum.KeyCode.D then control.r = 1 end
-	if input.KeyCode == Enum.KeyCode.Space then control.u = 1 end
-	if input.KeyCode == Enum.KeyCode.LeftShift then control.d = -1 end
+-- Bắt sự kiện bàn phím
+uis.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    
+    if input.KeyCode == Enum.KeyCode.F then -- Nhấn F để bật/tắt
+        if flying then stopFly() else startFly() end
+    elseif input.KeyCode == Enum.KeyCode.W then control.f = 1
+    elseif input.KeyCode == Enum.KeyCode.S then control.b = -1
+    elseif input.KeyCode == Enum.KeyCode.A then control.l = -1
+    elseif input.KeyCode == Enum.KeyCode.D then control.r = 1
+    elseif input.KeyCode == Enum.KeyCode.Space then control.u = 1
+    elseif input.KeyCode == Enum.KeyCode.LeftShift then control.d = -1
+    end
 end)
 
-userInputService.InputEnded:Connect(function(input, gp)
-	if input.KeyCode == Enum.KeyCode.W then control.f = 0 end
-	if input.KeyCode == Enum.KeyCode.S then control.b = 0 end
-	if input.KeyCode == Enum.KeyCode.A then control.l = 0 end
-	if input.KeyCode == Enum.KeyCode.D then control.r = 0 end
-	if input.KeyCode == Enum.KeyCode.Space then control.u = 0 end
-	if input.KeyCode == Enum.KeyCode.LeftShift then control.d = 0 end
+uis.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then control.f = 0
+    elseif input.KeyCode == Enum.KeyCode.S then control.b = 0
+    elseif input.KeyCode == Enum.KeyCode.A then control.l = 0
+    elseif input.KeyCode == Enum.KeyCode.D then control.r = 0
+    elseif input.KeyCode == Enum.KeyCode.Space then control.u = 0
+    elseif input.KeyCode == Enum.KeyCode.LeftShift then control.d = 0
+    end
 end)
 
-local flyBtn = Instance.new("TextButton", mainFrame)
-flyBtn.Size = UDim2.new(0.48, 0, 0, 50)
-flyBtn.Position = UDim2.new(0.5, 0, 0, 40)
-flyBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-flyBtn.Font = Enum.Font.GothamSemibold
-flyBtn.TextSize = 16
-flyBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-flyBtn.Text = "Fly Bypass: Inaktiv"
-Instance.new("UICorner", flyBtn).CornerRadius = UDim.new(0, 8)
-
-flyBtn.MouseButton1Click:Connect(function()
-	if flying then
-		stopFly()
-		flyBtn.Text = "Fly Bypass: Inaktiv"
-		flyBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	else
-		startFly()
-		flyBtn.Text = "Fly Bypass: Aktiv"
-		flyBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-	end
-end)
+print("Fly Script Loaded! Press 'F' to fly.")
