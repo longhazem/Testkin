@@ -1,118 +1,65 @@
---[[
-    FLY HYBRID BYPASS (BRM5 Logic + Anti-Cheat Bypass)
-    - Phím tắt: 
-        'F' để Bật/Tắt bay.
-        'E' để tăng tốc độ, 'Q' để giảm tốc độ.
-    - Điều khiển: W, A, S, D, Space (Lên), L-Shift (Xuống).
-]]
+-- ========================================================================= --
+-- BƯỚC 1: TẠO GIAO DIỆN (UI) TRONG PARVUS HUB
+-- Tìm dòng chữ `Window:AddTab` trong file script BRM5 gốc của bạn.
+-- Hãy dán đoạn code này ngay bên dưới một Tab nào đó (ví dụ Tab Misc hoặc LocalPlayer)
+-- ========================================================================= --
 
-local player = game:GetService("Players").LocalPlayer
-local runService = game:GetService("RunService")
-local uis = game:GetService("UserInputService")
-local camera = workspace.CurrentCamera
+-- Tạo một Tab mới tên là "Character" (Nếu bạn đã có Tab này rồi thì bỏ qua dòng này)
+local CharacterTab = Window:AddTab({Name = "Character"})
 
-local flying = true
-local flySpeed = 200
-local flyHrp = nil
-local control = {f = 0, b = 0, l = 0, r = 0, u = 0, d = 0}
+-- Tạo một khu vực tên là "Movement"
+local MovementSection = CharacterTab:AddSection({Name = "Movement", Side = "Left"})
 
--- Hàm tìm HumanoidRootPart an toàn
-local function getHrp()
-    local char = player.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
+-- Nút Bật/Tắt WalkSpeed
+MovementSection:AddToggle({
+    Name = "Enable WalkSpeed Bypass", 
+    Flag = "BRM5/WalkSpeed/Enabled"
+})
 
--- Hàm lấy vị trí mặt đất dưới chân (Bypass logic từ ảnh chụp)
-local function getGroundPos()
-    local hrp = getHrp()
-    if not hrp then return nil end
-    
-    local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = {player.Character}
-    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-    
-    local result = workspace:Raycast(hrp.Position, Vector3.new(0, -500, 0), rayParams)
-    if result then
-        return result.Position + Vector3.new(0, 3, 0)
-    end
-    return nil
-end
+-- Thanh kéo tốc độ (Min là 16 là tốc độ gốc, Max là 100. Có thể click vào số để nhập tay)
+MovementSection:AddSlider({
+    Name = "Speed Value", 
+    Default = 35, 
+    Min = 16, 
+    Max = 100, 
+    Flag = "BRM5/WalkSpeed/Value"
+})
 
--- Vòng lặp chính xử lý di chuyển (Kết hợp CFrame mượt của BRM5)
-runService.RenderStepped:Connect(function(dt)
-    if not flying then return end
-    local hrp = getHrp()
-    if not hrp then return end
 
-    -- Vô hiệu hóa vận tốc rơi tự do
-    hrp.Velocity = Vector3.new(0, 0, 0)
+-- ========================================================================= --
+-- BƯỚC 2: XỬ LÝ LOGIC CHẠY NHANH
+-- Hãy dán toàn bộ đoạn code dưới đây xuống TẬN CÙNG (Dưới cùng) của file script.
+-- Nó sẽ tự động lấy dữ liệu từ UI bạn vừa tạo ở trên để hoạt động.
+-- ========================================================================= --
 
-    -- Tính toán hướng di chuyển dựa trên Camera
-    local moveDir = (camera.CFrame.LookVector * (control.f + control.b) + 
-                    camera.CFrame.RightVector * (control.r + control.l) + 
-                    Vector3.new(0, control.u + control.d, 0))
-    
-    if moveDir.Magnitude > 0 then
-        -- Di chuyển bằng CFrame (Mượt hơn BodyVelocity của bản cũ)
-        hrp.CFrame = hrp.CFrame + (moveDir.Unit * flySpeed * dt)
-    end
-end)
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
--- Vòng lặp Bypass (Cơ chế nháy xuống đất từ ảnh chụp)
-task.spawn(function()
-    while true do
-        task.wait(2.5) -- Chu kỳ bypass
-        if flying then
-            local hrp = getHrp()
-            if hrp then
-                local oldCFrame = hrp.CFrame
-                local ground = getGroundPos()
-                if ground then
-                    -- Thực hiện nháy xuống đất cực nhanh để reset trạng thái bay trên Server
-                    hrp.CFrame = CFrame.new(ground)
-                    task.wait(0.05)
-                    hrp.CFrame = oldCFrame
+RunService.Heartbeat:Connect(function(Delta)
+    -- Kiểm tra xem UI Toggle có đang được BẬT không (Thông qua Flag của Parvus)
+    if Window.Flags and Window.Flags["BRM5/WalkSpeed/Enabled"] then
+        local Character = LocalPlayer.Character
+        if not Character then return end
+        
+        local Humanoid = Character:FindFirstChild("Humanoid")
+        local RootPart = Character:FindFirstChild("HumanoidRootPart")
+        
+        -- Nếu nhân vật còn sống
+        if Humanoid and RootPart and Humanoid.Health > 0 then
+            -- Lấy tốc độ từ thanh kéo (Slider) trên UI
+            local TargetSpeed = Window.Flags["BRM5/WalkSpeed/Value"] or 16
+            
+            -- Nếu người chơi đang bấm phím di chuyển
+            if Humanoid.MoveDirection.Magnitude > 0 then
+                -- Tính toán tốc độ cần bù trừ
+                local SpeedDifference = TargetSpeed - Humanoid.WalkSpeed
+                
+                -- Đẩy CFrame về phía trước
+                if SpeedDifference > 0 then
+                    RootPart.CFrame = RootPart.CFrame + (Humanoid.MoveDirection * (SpeedDifference * Delta))
                 end
             end
         end
     end
 end)
-
--- Xử lý phím bấm
-uis.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    
-    if input.KeyCode == Enum.KeyCode.F then
-        flying = not flying
-        print("Fly State: " .. tostring(flying))
-        if not flying then
-            local hrp = getHrp()
-            if hrp then hrp.Velocity = Vector3.new(0,0,0) end
-        end
-    elseif input.KeyCode == Enum.KeyCode.E then
-        flySpeed = flySpeed + 10
-        print("Speed: " .. flySpeed)
-    elseif input.KeyCode == Enum.KeyCode.Q then
-        flySpeed = math.max(10, flySpeed - 10)
-        print("Speed: " .. flySpeed)
-    elseif input.KeyCode == Enum.KeyCode.W then control.f = 1
-    elseif input.KeyCode == Enum.KeyCode.S then control.b = -1
-    elseif input.KeyCode == Enum.KeyCode.A then control.l = -1
-    elseif input.KeyCode == Enum.KeyCode.D then control.r = 1
-    elseif input.KeyCode == Enum.KeyCode.Space then control.u = 1
-    elseif input.KeyCode == Enum.KeyCode.LeftShift then control.d = -1
-    end
-end)
-
-uis.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.W then control.f = 0
-    elseif input.KeyCode == Enum.KeyCode.S then control.b = 0
-    elseif input.KeyCode == Enum.KeyCode.A then control.l = 0
-    elseif input.KeyCode == Enum.KeyCode.D then control.r = 0
-    elseif input.KeyCode == Enum.KeyCode.Space then control.u = 0
-    elseif input.KeyCode == Enum.KeyCode.LeftShift then control.d = 0
-    end
-end)
-
-print("--- HYBRID FLY LOADED ---")
-print("F: Toggle | E/Q: Speed Up/Down")
