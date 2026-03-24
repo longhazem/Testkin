@@ -1,96 +1,100 @@
 --[[
-    FINAL FLY SCRIPT (STABLE & BYPASS)
-    - Hướng dẫn: Nhấn phím 'F' để Bật/Tắt bay.
-    - Điều khiển: W,A,S,D, Space (Lên), L-Shift (Xuống).
+    FLY HYBRID BYPASS (BRM5 Logic + Anti-Cheat Bypass)
+    - Phím tắt: 
+        'F' để Bật/Tắt bay.
+        'E' để tăng tốc độ, 'Q' để giảm tốc độ.
+    - Điều khiển: W, A, S, D, Space (Lên), L-Shift (Xuống).
 ]]
 
 local player = game:GetService("Players").LocalPlayer
-local mouse = player:GetMouse()
 local runService = game:GetService("RunService")
 local uis = game:GetService("UserInputService")
+local camera = workspace.CurrentCamera
 
 local flying = false
-local speed = 200
-local bv, bg
+local flySpeed = 200
+local flyHrp = nil
 local control = {f = 0, b = 0, l = 0, r = 0, u = 0, d = 0}
 
--- Hàm tạo các đối tượng vật lý để bay
-local function startFly()
+-- Hàm tìm HumanoidRootPart an toàn
+local function getHrp()
     local char = player.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+-- Hàm lấy vị trí mặt đất dưới chân (Bypass logic từ ảnh chụp)
+local function getGroundPos()
+    local hrp = getHrp()
+    if not hrp then return nil end
+    
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {player.Character}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local result = workspace:Raycast(hrp.Position, Vector3.new(0, -500, 0), rayParams)
+    if result then
+        return result.Position + Vector3.new(0, 3, 0)
+    end
+    return nil
+end
+
+-- Vòng lặp chính xử lý di chuyển (Kết hợp CFrame mượt của BRM5)
+runService.RenderStepped:Connect(function(dt)
+    if not flying then return end
+    local hrp = getHrp()
     if not hrp then return end
 
-    flying = true
+    -- Vô hiệu hóa vận tốc rơi tự do
+    hrp.Velocity = Vector3.new(0, 0, 0)
+
+    -- Tính toán hướng di chuyển dựa trên Camera
+    local moveDir = (camera.CFrame.LookVector * (control.f + control.b) + 
+                    camera.CFrame.RightVector * (control.r + control.l) + 
+                    Vector3.new(0, control.u + control.d, 0))
     
-    -- Giữ nhân vật không bị xoay tròn
-    bg = Instance.new("BodyGyro")
-    bg.P = 9e4
-    bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bg.CFrame = hrp.CFrame
-    bg.Parent = hrp
+    if moveDir.Magnitude > 0 then
+        -- Di chuyển bằng CFrame (Mượt hơn BodyVelocity của bản cũ)
+        hrp.CFrame = hrp.CFrame + (moveDir.Unit * flySpeed * dt)
+    end
+end)
 
-    -- Tạo lực đẩy di chuyển
-    bv = Instance.new("BodyVelocity")
-    bv.Velocity = Vector3.new(0, 0, 0)
-    bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bv.Parent = hrp
-
-    -- Vòng lặp cập nhật vị trí
-    task.spawn(function()
-        while flying do
-            runService.RenderStepped:Wait()
-            if hrp and bg and bv then
-                -- Luôn xoay theo hướng Camera
-                bg.CFrame = workspace.CurrentCamera.CFrame
-                
-                -- Tính toán hướng di chuyển
-                local camera = workspace.CurrentCamera
-                local moveDir = (camera.CFrame.LookVector * (control.f + control.b) + 
-                                camera.CFrame.RightVector * (control.r + control.l) + 
-                                Vector3.new(0, control.u + control.d, 0))
-                
-                if moveDir.Magnitude > 0 then
-                    bv.Velocity = moveDir.Unit * speed
-                else
-                    bv.Velocity = Vector3.new(0, 0, 0)
+-- Vòng lặp Bypass (Cơ chế nháy xuống đất từ ảnh chụp)
+task.spawn(function()
+    while true do
+        task.wait(2.5) -- Chu kỳ bypass
+        if flying then
+            local hrp = getHrp()
+            if hrp then
+                local oldCFrame = hrp.CFrame
+                local ground = getGroundPos()
+                if ground then
+                    -- Thực hiện nháy xuống đất cực nhanh để reset trạng thái bay trên Server
+                    hrp.CFrame = CFrame.new(ground)
+                    task.wait(0.05)
+                    hrp.CFrame = oldCFrame
                 end
             end
         end
-    end)
-    
-    -- Cơ chế Bypass: Nháy xuống đất để tránh Anti-Cheat (giống trong ảnh bạn gửi)
-    task.spawn(function()
-        while flying do
-            task.wait(2) -- Cứ mỗi 2 giây thực hiện nháy 1 lần
-            if flying and hrp then
-                local oldPos = hrp.CFrame
-                -- Bắn tia laser tìm mặt đất
-                local ray = Ray.new(hrp.Position, Vector3.new(0, -500, 0))
-                local hit, pos = workspace:FindPartOnRayWithIgnoreList(ray, {char})
-                
-                if hit then
-                    hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0)) -- Chạm đất
-                    task.wait(0.1)
-                    hrp.CFrame = oldPos -- Quay lại vị trí bay
-                end
-            end
-        end
-    end)
-end
+    end
+end)
 
-local function stopFly()
-    flying = false
-    if bg then bg:Destroy() end
-    if bv then bv:Destroy() end
-end
-
--- Bắt sự kiện bàn phím
+-- Xử lý phím bấm
 uis.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     
-    if input.KeyCode == Enum.KeyCode.F then -- Nhấn F để bật/tắt
-        if flying then stopFly() else startFly() end
+    if input.KeyCode == Enum.KeyCode.F then
+        flying = not flying
+        print("Fly State: " .. tostring(flying))
+        if not flying then
+            local hrp = getHrp()
+            if hrp then hrp.Velocity = Vector3.new(0,0,0) end
+        end
+    elseif input.KeyCode == Enum.KeyCode.E then
+        flySpeed = flySpeed + 10
+        print("Speed: " .. flySpeed)
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        flySpeed = math.max(10, flySpeed - 10)
+        print("Speed: " .. flySpeed)
     elseif input.KeyCode == Enum.KeyCode.W then control.f = 1
     elseif input.KeyCode == Enum.KeyCode.S then control.b = -1
     elseif input.KeyCode == Enum.KeyCode.A then control.l = -1
@@ -110,4 +114,5 @@ uis.InputEnded:Connect(function(input)
     end
 end)
 
-print("Fly Script Loaded! Press 'F' to fly.")
+print("--- HYBRID FLY LOADED ---")
+print("F: Toggle | E/Q: Speed Up/Down")
