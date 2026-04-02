@@ -1,4 +1,4 @@
--- [[ TOKAI HUB - ULTIMATE UNIVERSAL ]]
+-- [[ TOKAI HUB - ULTIMATE UNIVERSAL HYBRID ]]
 -- Tương thích: Volt, Potassium, Synapse Z, Volcano, Wave, Delta, Codex, Seliwar, Solar
 
 -- [ COMPATIBILITY LAYER ]
@@ -22,36 +22,26 @@ local centerPosition = camera.ViewportSize / 2
 
 local hitboxSize = 20 
 local activeNPCs = {}      
-local trackedParts = {}    
 local originalSizes = {} 
-local wallConnections = {} 
-
-local wallEnabled = false       
-local outlineEnabled = false    
-local silentEnabled = false     
-local showHitbox = false        
-local fullBrightEnabled = false 
-local alwaysDayEnabled = false
-local fastScanEnabled = false
 local isUnloaded = false     
-local patchOptions = { recoil = false, firemodes = false }
 
--- [ NEW PLAYER ESP SETTINGS ]
+-- [ ESP STATE ]
 local playerEspEnabled = false
 local playerOutlineEnabled = false
 local playerHeadDotEnabled = false
-local playerEspColor = Color3.fromRGB(0, 150, 255) -- Màu xanh nước biển
+local npcEspEnabled = false
+local npcOutlineEnabled = false
 
--- [ SILENT AIM & FOV SETTINGS ]
+local playerEspColor = Color3.fromRGB(0, 162, 255) -- Xanh nước biển
+local maleColor = Color3.fromRGB(0, 255, 0)
+local zombieColor = Color3.fromRGB(255, 0, 0)
+
+-- [ SILENT AIM ]
 local silentAimEnabled = false
 local fovRadius = 180
 local showFovCircle = true
 local fovCircle = nil
-
-local maleColor = Color3.fromRGB(0, 255, 0)
-local zombieColor = Color3.fromRGB(255, 0, 0)
-local hitboxVisualColor = Color3.fromRGB(255, 0, 0) 
-local noFogConnection = nil
+local patchOptions = { recoil = false, firemodes = false }
 
 ------------------------------------------------------------------
 -- [[ SILENT AIM DRAWING ]]
@@ -69,7 +59,7 @@ pcall(function()
 end)
 
 ------------------------------------------------------------------
--- [[ WEAPON MODS LOGIC ]]
+-- [[ WEAPON MODS ]]
 ------------------------------------------------------------------
 local function patchWeapons()
     pcall(function()
@@ -77,7 +67,6 @@ local function patchWeapons()
         local configs = shared and shared:FindFirstChild("Configs")
         local weaponFolder = configs and configs:FindFirstChild("Weapon")
         local playerWeapons = weaponFolder and weaponFolder:FindFirstChild("Weapons_Player")
-        
         if not playerWeapons then return end
 
         for _, platform in pairs(playerWeapons:GetChildren()) do
@@ -94,9 +83,7 @@ local function patchWeapons()
                                         tune.RecoilForce_Impulse = 0 tune.Recoil_Range = Vector2.zero
                                         tune.Recoil_Camera = 0
                                     end
-                                    if patchOptions.firemodes then
-                                        tune.Firemodes = {3, 2, 1, 0}
-                                    end
+                                    if patchOptions.firemodes then tune.Firemodes = {3, 2, 1, 0} end
                                 end
                             end)
                         end
@@ -108,352 +95,170 @@ local function patchWeapons()
 end
 
 ------------------------------------------------------------------
--- [[ PLAYER ESP LOGIC ]]
+-- [[ CORE VISUAL LOGIC ]]
 ------------------------------------------------------------------
-local function updatePlayerESP(player)
-    if player == localPlayer then return end
+local function applyVisuals(model)
+    if not model:IsA("Model") or model == localPlayer.Character then return end
     
-    local function apply()
-        local char = player.Character
-        if not char then return end
-
-        -- Viền ESP (Outline)
-        local highlight = char:FindFirstChild("PlayerHighlight")
-        if playerEspEnabled and playerOutlineEnabled then
-            if not highlight then
-                highlight = Instance.new("Highlight")
-                highlight.Name = "PlayerHighlight"
-                highlight.Parent = char
-            end
-            highlight.OutlineColor = playerEspColor
-            highlight.FillTransparency = 0.8
-            highlight.FillColor = playerEspColor
-            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        else
-            if highlight then highlight:Destroy() end
-        end
-
-        -- Cục trên đầu (Head Dot)
-        local head = char:FindFirstChild("Head")
-        if head then
-            local dot = head:FindFirstChild("PlayerDot")
-            if playerEspEnabled and playerHeadDotEnabled then
-                if not dot then
-                    dot = Instance.new("SphereHandleAdornment")
-                    dot.Name = "PlayerDot"
-                    dot.Parent = head
-                    dot.Adornee = head
-                    dot.Radius = 0.7
-                    dot.AlwaysOnTop = true
-                    dot.ZIndex = 10
-                end
-                dot.Color3 = playerEspColor
-                dot.Transparency = 0.3
-            else
-                if dot then dot:Destroy() end
-            end
+    -- Phân loại: Kiểm tra xem Model "Male" này có phải là Player thật không
+    local isActualPlayer = false
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character == model then
+            isActualPlayer = true
+            break
         end
     end
 
-    player.CharacterAdded:Connect(function() task.wait(0.5) apply() end)
-    apply()
+    local isZombie = string.find(model.Name:lower(), "zombie") ~= nil
+    local isMale = (model.Name == "Male")
+    
+    if not isMale and not isZombie then return end
+
+    -- Thiết lập màu sắc
+    local targetColor = isZombie and zombieColor or maleColor
+    if isActualPlayer then targetColor = playerEspColor end
+
+    -- 1. Highlight Logic
+    local highlight = model:FindFirstChild("Tokai_Highlight")
+    local shouldShowOutline = (isActualPlayer and playerOutlineEnabled) or (not isActualPlayer and npcOutlineEnabled)
+    
+    if shouldShowOutline then
+        if not highlight then
+            highlight = Instance.new("Highlight")
+            highlight.Name = "Tokai_Highlight"
+            highlight.Parent = model
+        end
+        highlight.FillColor = targetColor
+        highlight.OutlineColor = Color3.new(1, 1, 1)
+        highlight.FillTransparency = 0.7
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    else
+        if highlight then highlight:Destroy() end
+    end
+
+    -- 2. Head Dot Logic
+    local head = model:FindFirstChild("Head")
+    if head then
+        local dot = head:FindFirstChild("Tokai_Dot")
+        local shouldShowDot = (isActualPlayer and playerHeadDotEnabled) or (not isActualPlayer and npcEspEnabled)
+        
+        if shouldShowDot then
+            if not dot then
+                dot = Instance.new("SphereHandleAdornment")
+                dot.Name = "Tokai_Dot"
+                dot.Parent = head
+                dot.Adornee = head
+                dot.Radius = 0.7
+                dot.AlwaysOnTop = true
+                dot.ZIndex = 10
+            end
+            dot.Color3 = targetColor
+            dot.Transparency = 0.3
+        else
+            if dot then dot:Destroy() end
+        end
+    end
 end
 
-Players.PlayerAdded:Connect(updatePlayerESP)
-for _, p in pairs(Players:GetPlayers()) do updatePlayerESP(p) end
-
 ------------------------------------------------------------------
--- [[ SILENT AIM & VISIBILITY FUNCTIONS ]]
+-- [[ SILENT AIM LOGIC ]]
 ------------------------------------------------------------------
-local function isVisible(targetModel)
-    if not targetModel or not targetModel:FindFirstChild("Head") then return false end
-    local ignoreList = {localPlayer.Character, targetModel}
-    local obscuringParts = camera:GetPartsObscuringTarget({targetModel.Head.Position}, ignoreList)
-    return #obscuringParts == 0
+local function isVisible(target)
+    if not target or not target:FindFirstChild("Head") then return false end
+    local parts = camera:GetPartsObscuringTarget({target.Head.Position}, {localPlayer.Character, target})
+    return #parts == 0
 end
 
-local function getClosestNPC()
-    local closestNPC, closestDistance = nil, fovRadius
-    for model, data in pairs(activeNPCs) do
-        if model.Parent and data.head then
-            local pos, onScreen = camera:WorldToViewportPoint(data.head.Position)
-            if onScreen then
-                local distance = (Vector2.new(pos.X, pos.Y) - centerPosition).Magnitude
-                if distance <= fovRadius and distance < closestDistance then
-                    if isVisible(model) then
-                        closestNPC = model
-                        closestDistance = distance
+local function getClosestTarget()
+    local closest, dist = nil, fovRadius
+    for _, m in pairs(Workspace:GetChildren()) do
+        if m:IsA("Model") and (m.Name == "Male" or string.find(m.Name:lower(), "zombie")) then
+            if m == localPlayer.Character then continue end
+            local head = m:FindFirstChild("Head")
+            if head then
+                local pos, onScreen = camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local d = (Vector2.new(pos.X, pos.Y) - centerPosition).Magnitude
+                    if d < dist and isVisible(m) then
+                        closest = m
+                        dist = d
                     end
                 end
             end
         end
     end
-    return closestNPC
+    return closest
 end
 
--- [ HOOKING ENGINE ]
+-- Hook Engine
 task.spawn(function()
     pcall(function()
         local getMuzzle = filtergc('function', {Name = 'GetMuzzleCFrame'}, true)
-        local getRecoil = filtergc('function', {Name = 'getRecoil'}, true)
-
         if getMuzzle then
-            local oldMuzzle; oldMuzzle = hookfunction(getMuzzle, function(self, cast)
-                local origin, barrel, cameraCF = oldMuzzle(self, cast)
-                if silentAimEnabled and not cast and origin then
-                    local npc = getClosestNPC()
-                    if npc and npc:FindFirstChild("Head") then
-                        return CFrame.new(origin.Position, npc.Head.Position), barrel, cameraCF
+            hookfunction(getMuzzle, function(self, cast)
+                local origin, barrel, cameraCF = getMuzzle(self, cast)
+                if silentAimEnabled and not cast then
+                    local target = getClosestTarget()
+                    if target and target:FindFirstChild("Head") then
+                        return CFrame.new(origin.Position, target.Head.Position), barrel, cameraCF
                     end
                 end
                 return origin, barrel, cameraCF
             end)
         end
-
-        if getRecoil then
-            local oldRecoil; oldRecoil = hookfunction(getRecoil, function(...)
-                local args = {...}
-                if silentAimEnabled and args[1] then
-                    args[1]['Barrel_Spread'] = 0
-                    args[1]['RecoilForce_Tap'] = 0
-                end
-                return oldRecoil(unpack(args))
-            end)
-        end
     end)
 end)
-
-------------------------------------------------------------------
--- [[ NPC & ESP LOGIC ]]
-------------------------------------------------------------------
-local function isValidNPC(model)
-    if not model or not model.Parent then return false end
-    if Players:GetPlayerFromCharacter(model) then return false end -- Exclude players from NPC logic
-    local name = model.Name:lower()
-    local isZombie = string.find(name, "zombie") ~= nil
-    local isMale = (model.Name == "Male")
-    if isMale then
-        for _, c in ipairs(model:GetChildren()) do
-            if c.Name:sub(1, 3) == "AI_" then return true end
-        end
-    end
-    return isZombie
-end
-
-local function applyOutline(model)
-    pcall(function()
-        local highlight = model:FindFirstChild("ESP_Outline")
-        if outlineEnabled and isValidNPC(model) then
-            if not highlight then
-                highlight = Instance.new("Highlight")
-                highlight.Name = "ESP_Outline"
-                highlight.Parent = model
-            end
-            highlight.FillTransparency = 1
-            highlight.OutlineColor = string.find(model.Name:lower(), "zombie") and zombieColor or maleColor
-            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        else
-            if highlight then highlight:Destroy() end
-        end
-    end)
-end
-
-local function createBoxForPart(part)
-    if not part or part:FindFirstChild("Wall_Box") then return end
-    local sphere = Instance.new("SphereHandleAdornment")
-    sphere.Name = "Wall_Box"
-    sphere.Radius = 1.2
-    sphere.Adornee = part
-    sphere.AlwaysOnTop = true 
-    sphere.ZIndex = 10
-    sphere.Transparency = 0.3
-    local model = part.Parent
-    if model then
-        sphere.Color3 = string.find(model.Name:lower(), "zombie") and zombieColor or maleColor
-    end
-    sphere.Parent = part
-    trackedParts[part] = true
-end
-
-local function addNPC(model)
-    if activeNPCs[model] or not isValidNPC(model) then return end
-    local head = model:FindFirstChild("Head")
-    local root = model:FindFirstChild("Root") or model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("UpperTorso")
-    if root then
-        activeNPCs[model] = { head = head or root, root = root }
-        if wallEnabled then createBoxForPart(head or root) end
-        if outlineEnabled then applyOutline(model) end
-    end
-end
-
-------------------------------------------------------------------
--- [[ HITBOX LOGIC ]]
-------------------------------------------------------------------
-local function applySilentHitbox(model, root)
-    if not originalSizes[model] then originalSizes[model] = root.Size end
-    local TARGET_SIZE = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-    if root.Size ~= TARGET_SIZE then root.Size = TARGET_SIZE end
-    root.Transparency = showHitbox and 0.8 or 1
-    if showHitbox then 
-        root.Color = hitboxVisualColor 
-        root.Material = Enum.Material.Neon 
-    end
-    root.CanCollide = true
-end
-
-local function restoreOriginalSize(model)
-    local root = model:FindFirstChild("Root") or model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("UpperTorso")
-    if root and originalSizes[model] then
-        root.Size = originalSizes[model]
-        root.Transparency = 1
-    end
-    originalSizes[model] = nil
-end
 
 ------------------------------------------------------------------
 -- [[ UI LOADING ]]
 ------------------------------------------------------------------
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-local Window = Rayfield:CreateWindow({ 
-    Name = "⚔️🐧 Tokai Hub (Universal)", 
-    LoadingTitle = "Executor: " .. identifyexecutor(),
-    Theme = "Default" 
-})
+local Window = Rayfield:CreateWindow({ Name = "⚔️ Tokai Hub Ultimate", Theme = "Default" })
 
 local CombatTab = Window:CreateTab("Combat ⚔️")
-CombatTab:CreateToggle({ Name = "Silent Aim (Hook)", CurrentValue = false, Callback = function(v) silentAimEnabled = v end })
-CombatTab:CreateToggle({ Name = "Silent Hitbox", CurrentValue = false, Callback = function(v) silentEnabled = v end })
-CombatTab:CreateToggle({ Name = "Show Hitbox Visual", CurrentValue = false, Callback = function(v) showHitbox = v end })
-CombatTab:CreateSlider({ Name = "Hitbox Size", Range = {0, 20}, Increment = 1, CurrentValue = 20, Callback = function(v) hitboxSize = v end })
+CombatTab:CreateToggle({ Name = "Silent Aim", CurrentValue = false, Callback = function(v) silentAimEnabled = v end })
+CombatTab:CreateSlider({ Name = "Hitbox Size", Range = {2, 20}, Increment = 1, CurrentValue = 2, Callback = function(v) hitboxSize = v end })
 
-local FovTab = Window:CreateTab("FOV Settings ⭕")
-FovTab:CreateToggle({ Name = "Show FOV Circle", CurrentValue = true, Callback = function(v) showFovCircle = v end })
-FovTab:CreateSlider({ Name = "FOV Radius", Range = {0, 500}, Increment = 1, CurrentValue = 180, Callback = function(v) fovRadius = v end })
+local VisualTab = Window:CreateTab("Visuals 👁️")
+VisualTab:CreateSection("— Player ESP (Blue) —")
+VisualTab:CreateToggle({ Name = "Enable Player ESP", CurrentValue = false, Callback = function(v) playerEspEnabled = v end })
+VisualTab:CreateToggle({ Name = "Player Outline", CurrentValue = false, Callback = function(v) playerOutlineEnabled = v end })
+VisualTab:CreateToggle({ Name = "Player Head Dot", CurrentValue = false, Callback = function(v) playerHeadDotEnabled = v end })
 
-local VisibleTab = Window:CreateTab("Visible ")
-VisibleTab:CreateSection("— Player ESP (Blue) —")
-VisibleTab:CreateToggle({ Name = "Enable Player ESP", CurrentValue = false, Callback = function(v) playerEspEnabled = v for _,p in pairs(Players:GetPlayers()) do updatePlayerESP(p) end end })
-VisibleTab:CreateToggle({ Name = "Player Outline", CurrentValue = false, Callback = function(v) playerOutlineEnabled = v for _,p in pairs(Players:GetPlayers()) do updatePlayerESP(p) end end })
-VisibleTab:CreateToggle({ Name = "Head Dot Marker", CurrentValue = false, Callback = function(v) playerHeadDotEnabled = v for _,p in pairs(Players:GetPlayers()) do updatePlayerESP(p) end end })
-
-VisibleTab:CreateSection("— NPC & World —")
-VisibleTab:CreateToggle({
-   Name = "ESP NPC (Sphere)",
-   CurrentValue = false,
-   Callback = function(v) 
-       wallEnabled = v
-       if v then for _, d in pairs(activeNPCs) do createBoxForPart(d.head) end 
-       else 
-           for part, _ in pairs(trackedParts) do if part:FindFirstChild("Wall_Box") then part.Wall_Box:Destroy() end end
-           trackedParts = {}
-       end 
-   end,
-})
-VisibleTab:CreateToggle({
-    Name = "ESP NPC (Outline Only)",
-    CurrentValue = false,
-    Callback = function(v)
-        outlineEnabled = v
-        for model, _ in pairs(activeNPCs) do applyOutline(model) end
-    end
-})
-VisibleTab:CreateToggle({ Name = "Fast Scan (0.001s)", CurrentValue = false, Callback = function(v) fastScanEnabled = v end })
-VisibleTab:CreateToggle({
-   Name = "No Fog",
-   CurrentValue = false,
-   Callback = function(v) 
-        local atm = lighting:FindFirstChildOfClass("Atmosphere")
-        if v then
-            if atm then 
-                noFogConnection = atm:GetPropertyChangedSignal("Density"):Connect(function() atm.Density = 0 end)
-                atm.Density = 0 
-            end
-            lighting.FogEnd = 100000
-        else
-            if noFogConnection then noFogConnection:Disconnect() end
-            if atm then atm.Density = 0.3 end
-        end
-   end,
-})
-VisibleTab:CreateToggle({ Name = "FullBright", CurrentValue = false, Callback = function(v) fullBrightEnabled = v end })
-VisibleTab:CreateToggle({ Name = "Always Day", CurrentValue = false, Callback = function(v) alwaysDayEnabled = v end })
-
-local WeaponsTab = Window:CreateTab("Weapons ")
-WeaponsTab:CreateToggle({ Name = "No Recoil", CurrentValue = false, Callback = function(v) patchOptions.recoil = v patchWeapons() end })
-WeaponsTab:CreateToggle({ Name = "Unlock Firemodes", CurrentValue = false, Callback = function(v) patchOptions.firemodes = v patchWeapons() end })
+VisualTab:CreateSection("— NPC ESP —")
+VisualTab:CreateToggle({ Name = "NPC Sphere ESP", CurrentValue = false, Callback = function(v) npcEspEnabled = v end })
+VisualTab:CreateToggle({ Name = "NPC Outline", CurrentValue = false, Callback = function(v) npcOutlineEnabled = v end })
 
 ------------------------------------------------------------------
--- [ LOOPS ]
+-- [[ MAIN LOOPS ]]
 ------------------------------------------------------------------
-
--- ESP UPDATE
 task.spawn(function()
     while not isUnloaded do
-        for model, data in pairs(activeNPCs) do
-            if not model.Parent then
-                activeNPCs[model] = nil
-            else
-                if outlineEnabled then applyOutline(model) end
+        for _, obj in pairs(Workspace:GetChildren()) do
+            if obj:IsA("Model") then
+                applyVisuals(obj)
+                
+                -- Silent Hitbox Logic
+                if silentAimEnabled and (obj.Name == "Male" or string.find(obj.Name:lower(), "zombie")) then
+                    local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Root")
+                    if root and obj ~= localPlayer.Character then
+                        if not originalSizes[obj] then originalSizes[obj] = root.Size end
+                        root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                        root.CanCollide = true
+                    end
+                end
             end
-        end
-        -- Auto refresh player ESP states
-        if playerEspEnabled then
-            for _, p in pairs(Players:GetPlayers()) do updatePlayerESP(p) end
         end
         task.wait(0.5)
     end
 end)
 
--- HITBOX LOOP (0.1s)
-task.spawn(function()
-    while not isUnloaded do
-        if silentEnabled then
-            for model, data in pairs(activeNPCs) do
-                if model.Parent and data.root then applySilentHitbox(model, data.root) end
-            end
-        else
-            for model, _ in pairs(originalSizes) do restoreOriginalSize(model) end
-        end
-        task.wait(0.1)
-    end
-end)
-
--- SCAN LOOP (0.001s)
-task.spawn(function()
-    while not isUnloaded do
-        if fastScanEnabled then
-            local items = Workspace:GetDescendants()
-            for i, m in ipairs(items) do
-                if not fastScanEnabled or isUnloaded then break end
-                if m:IsA("Model") and not activeNPCs[m] and isValidNPC(m) then
-                    addNPC(m)
-                end
-                if i % 300 == 0 then task.wait() end 
-            end
-        end
-        task.wait(0.001)
-    end
-end)
-
--- RENDER STEPPED (FOV & LIGHTING)
 RunService.RenderStepped:Connect(function()
-    centerPosition = camera.ViewportSize / 2
     if fovCircle then
-        fovCircle.Visible = (showFovCircle and silentAimEnabled)
-        fovCircle.Position = centerPosition
+        fovCircle.Visible = silentAimEnabled
+        fovCircle.Position = camera.ViewportSize / 2
         fovCircle.Radius = fovRadius
     end
-
-    if fullBrightEnabled then
-        lighting.Brightness = 2
-        lighting.Ambient = Color3.new(1, 1, 1)
-        lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-    end
-    if alwaysDayEnabled then lighting.ClockTime = 12 end
 end)
 
--- INITIALIZE
-for _, m in ipairs(Workspace:GetDescendants()) do if m:IsA("Model") and isValidNPC(m) then addNPC(m) end end
-Workspace.DescendantAdded:Connect(function(m) if m:IsA("Model") then task.delay(0.1, function() if isValidNPC(m) then addNPC(m) end end) end end)
-
-print("Tokai Hub Universal Load!")
+print("Tokai Hub: Hybrid Detection Loaded!")
