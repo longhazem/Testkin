@@ -1,6 +1,6 @@
 --[[
-    PVP Mobile Hub - Version Final V2 (Fixed FOV Slider)
-    Cập nhật: Thêm lại Slider FOV, Silent Aim, ESP, Hitbox
+    PVP Mobile Hub - ClientService Edition
+    Tính năng: Silent Aim (ClientService), ESP Highlight, Hitbox Expander, FOV Slider
 ]]
 
 local Players = game:GetService('Players')
@@ -19,7 +19,7 @@ local Options = {
     ESP = true,
     Hitbox = false,
     HitboxSize = 6,
-    AimPart = "Head",
+    AimPart = "Head", -- "Head" hoặc "Torso"
     LockAimButton = false
 }
 
@@ -36,6 +36,84 @@ RunService.RenderStepped:Connect(function()
     FovCircle.Position = Camera.ViewportSize / 2
     FovCircle.Radius = Options.FovRadius
     FovCircle.Visible = Options.ShowFov
+end)
+
+---------------------------------------------------------
+-- LOGIC SILENT AIM (CLIENT SERVICE - TRẢ LẠI BẢN GỐC)
+---------------------------------------------------------
+local Functions = {
+    GetClients = filtergc('function', {Name = 'GetClients', Constants = {'Clients'}}, false),
+    GetMuzzleCFrame = filtergc('function', {Name = 'GetMuzzleCFrame'}, true),
+    GetRecoil = filtergc('function', {Name = 'getRecoil'}, true)
+}
+
+local ClientService = nil
+
+for _, Function in pairs(Functions.GetClients) do
+    local Info = getinfo(Function)
+    if not Info.source:find('ClientService') then continue end
+    Functions.GetClients = Function
+end
+
+local OldClients; OldClients = hookfunction(Functions.GetClients, function(Self)
+    ClientService = Self; return OldClients(Self)
+end)
+
+-- Hàm lấy bộ phận mục tiêu từ Actor (Tự động thích ứng Head/Body)
+local function GetActorPart(Data)
+    if not Data or not Data.Actor or not Data.Actor.Parts then return nil end
+    local Parts = Data.Actor.Parts
+    if Options.AimPart == "Head" then
+        return Parts.Head
+    else
+        -- Trả về thân (thử nhiều tên khác nhau để tránh lỗi)
+        return Parts.Torso or Parts.UpperTorso or Parts.HumanoidRootPart
+    end
+end
+
+function GetClosest()
+    local ClosestPlayer, ClosestData, ClosestDistance = nil, nil, math.huge
+    if not ClientService then return end
+
+    for Player, Data in pairs(ClientService.Clients) do
+        if Player == LocalPlayer then continue end
+        if not Data.Actor or not Data.Actor.Alive then continue end
+        if Data.Squad == ClientService.LocalClient.Squad then continue end
+
+        local targetPart = GetActorPart(Data)
+        if not targetPart then continue end
+
+        local Position, OnScreen = Camera:WorldToViewportPoint(targetPart.Position)
+        if not OnScreen then continue end
+
+        local Distance = (Vector2.new(Position.X, Position.Y) - (Camera.ViewportSize / 2)).Magnitude
+        if Distance > Options.FovRadius or Distance > ClosestDistance then continue end
+
+        ClosestPlayer = Player; ClosestData = Data; ClosestDistance = Distance
+    end
+    return ClosestPlayer, ClosestData
+end
+
+local OldMuzzle; OldMuzzle = hookfunction(Functions.GetMuzzleCFrame, function(Self, Cast)
+    local Origin, Barrel, CameraCF = OldMuzzle(Self, Cast)
+    if Options.SilentAim and not Cast and Origin then
+        local Player, Data = GetClosest()
+        if Player then
+            local targetPart = GetActorPart(Data)
+            if targetPart then
+                return CFrame.new(Origin.Position, targetPart.Position), Barrel, CameraCF
+            end
+        end
+    end
+    return Origin, Barrel, CameraCF
+end)
+
+local OldRecoil; OldRecoil = hookfunction(Functions.GetRecoil, function(...)
+    local Args = {...}
+    if Options.SilentAim and Args[1] then
+        Args[1]['Barrel_Spread'] = 0; Args[1]['RecoilForce_Tap'] = 0
+    end
+    return OldRecoil(unpack(Args))
 end)
 
 ---------------------------------------------------------
@@ -115,44 +193,18 @@ Workspace.DescendantAdded:Connect(ensureHighlight)
 for _, v in pairs(Workspace:GetDescendants()) do ensureHighlight(v) end
 
 ---------------------------------------------------------
--- SILENT AIM (FIXED)
----------------------------------------------------------
-local function GetClosestTarget()
-    local target, dist = nil, math.huge
-    for _, model in pairs(Workspace:GetChildren()) do
-        if model:IsA("Model") and model.Name == "Male" then
-            local part = (Options.AimPart == "Head") and model:FindFirstChild("Head") or 
-                         (model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso") or model:FindFirstChild("HumanoidRootPart"))
-            
-            if part then
-                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                if onScreen then
-                    local mag = (Vector2.new(pos.X, pos.Y) - (Camera.ViewportSize / 2)).Magnitude
-                    if mag <= Options.FovRadius and mag < dist then
-                        target = part
-                        dist = mag
-                    end
-                end
-            end
-        end
-    end
-    return target
-end
-
----------------------------------------------------------
--- UI GIAO DIỆN (MOBILE OPTIMIZED)
+-- UI GIAO DIỆN MOBILE
 ---------------------------------------------------------
 local ScreenGui = Instance.new("ScreenGui")
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 240, 0, 340) -- Tăng size để chứa Slider
+Main.Size = UDim2.new(0, 240, 0, 340)
 Main.Position = UDim2.new(0.5, -120, 0.5, -170)
-Main.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Main.BorderSizePixel = 0
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 Main.Parent = ScreenGui
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", Main)
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
@@ -182,15 +234,10 @@ local function CreateToggle(text, pos, callback, state)
 end
 
 CreateToggle("Silent Aim", UDim2.new(0.05, 0, 0, 45), function(s) Options.SilentAim = s end, Options.SilentAim)
-CreateToggle("NPC ESP", UDim2.new(0.05, 0, 0, 85), function(s) 
-    Options.ESP = s 
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Highlight") and v.Name == "AutoHighlight" then v.Enabled = s end
-    end
-end, Options.ESP)
+CreateToggle("NPC ESP", UDim2.new(0.05, 0, 0, 85), function(s) Options.ESP = s end, Options.ESP)
 CreateToggle("Show FOV", UDim2.new(0.05, 0, 0, 125), function(s) Options.ShowFov = s end, Options.ShowFov)
 
--- SLIDER FOV (MỚI THÊM LẠI)
+-- SLIDER FOV
 local SliderLabel = Instance.new("TextLabel")
 SliderLabel.Size = UDim2.new(0.9, 0, 0, 20)
 SliderLabel.Position = UDim2.new(0.05, 0, 0, 162)
@@ -198,7 +245,6 @@ SliderLabel.BackgroundTransparency = 1
 SliderLabel.Text = "FOV Size: " .. Options.FovRadius
 SliderLabel.TextColor3 = Color3.new(1, 1, 1)
 SliderLabel.Font = Enum.Font.Gotham
-SliderLabel.TextSize = 12
 SliderLabel.Parent = Main
 
 local SliderBG = Instance.new("Frame")
@@ -214,39 +260,22 @@ SliderFill.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
 SliderFill.Parent = SliderBG
 Instance.new("UICorner", SliderFill)
 
-local isSiding = false
+local isSliding = false
 local function UpdateSlider(input)
     local sizeX = math.clamp((input.Position.X - SliderBG.AbsolutePosition.X) / SliderBG.AbsoluteSize.X, 0, 1)
     SliderFill.Size = UDim2.new(sizeX, 0, 1, 0)
-    local val = math.floor(sizeX * 500)
-    if val < 5 then val = 5 end
-    Options.FovRadius = val
-    SliderLabel.Text = "FOV Size: " .. val
+    Options.FovRadius = math.floor(sizeX * 500)
+    SliderLabel.Text = "FOV Size: " .. Options.FovRadius
 end
 
-SliderBG.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isSiding = true
-        UpdateSlider(input)
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if isSiding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        UpdateSlider(input)
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isSiding = false
-    end
-end)
+SliderBG.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then isSliding = true UpdateSlider(i) end end)
+UserInputService.InputChanged:Connect(function(i) if isSliding and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then UpdateSlider(i) end end)
+UserInputService.InputEnded:Connect(function() isSliding = false end)
 
 CreateToggle("Hitbox Mod", UDim2.new(0.05, 0, 0, 210), function(s) Options.Hitbox = s end, Options.Hitbox)
 CreateToggle("Lock Button", UDim2.new(0.05, 0, 0, 250), function(s) Options.LockAimButton = s end, Options.LockAimButton)
 
--- Floating Button (HEAD/BODY)
+-- Nút nổi Aim HEAD/BODY
 local Float = Instance.new("TextButton")
 Float.Size = UDim2.new(0, 100, 0, 40)
 Float.Position = UDim2.new(0.8, -100, 0.2, 0)
@@ -258,89 +287,14 @@ Float.Parent = ScreenGui
 Instance.new("UICorner", Float)
 
 local pressing, dragStart, startPos, hasDragged = false, nil, nil, false
-Float.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        pressing, dragStart, startPos, hasDragged = true, i.Position, Float.Position, false
-    end
-end)
+Float.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then pressing, dragStart, startPos, hasDragged = true, i.Position, Float.Position, false end end)
+UserInputService.InputChanged:Connect(function(i) if pressing and not Options.LockAimButton then local delta = i.Position - dragStart if delta.Magnitude > 5 then hasDragged = true Float.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end end)
+UserInputService.InputEnded:Connect(function(i) if pressing then pressing = false if not hasDragged then if Options.AimPart == "Head" then Options.AimPart = "Torso" Float.Text = "Aim: BODY" Float.BackgroundColor3 = Color3.fromRGB(0, 120, 255) else Options.AimPart = "Head" Float.Text = "Aim: HEAD" Float.BackgroundColor3 = Color3.fromRGB(255, 100, 0) end if Options.Hitbox then ResetHitboxes() end end end end)
 
-UserInputService.InputChanged:Connect(function(i)
-    if pressing and not Options.LockAimButton and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        local delta = i.Position - dragStart
-        if delta.Magnitude > 5 then
-            hasDragged = true
-            Float.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end
-end)
+-- Kéo menu
+local mDrag, mStart, mPos = false, nil, nil
+Main.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then mDrag, mStart, mPos = true, i.Position, Main.Position end end)
+UserInputService.InputChanged:Connect(function(i) if mDrag then local delta = i.Position - mStart Main.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset + delta.X, mPos.Y.Scale, mPos.Y.Offset + delta.Y) end end)
+UserInputService.InputEnded:Connect(function() mDrag = false end)
 
-UserInputService.InputEnded:Connect(function(i)
-    if (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) and pressing then
-        pressing = false
-        if not hasDragged then
-            if Options.AimPart == "Head" then
-                Options.AimPart = "Torso"; Float.Text = "Aim: BODY"; Float.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-            else
-                Options.AimPart = "Head"; Float.Text = "Aim: HEAD"; Float.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
-            end
-            if Options.Hitbox then ResetHitboxes() end
-        end
-    end
-end)
-
--- Kéo menu chính
-local mDragging, mStart, mPos = false, nil, nil
-Main.InputBegan:Connect(function(i)
-    if (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) and not isSiding then
-        mDragging, mStart, mPos = true, i.Position, Main.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if mDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        local delta = i.Position - mStart
-        Main.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset + delta.X, mPos.Y.Scale, mPos.Y.Offset + delta.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function() mDragging = false end)
-
----------------------------------------------------------
--- HOOK HỆ THỐNG
----------------------------------------------------------
-local function HookFunctions()
-    local Success, Functions = pcall(function()
-        return {
-            GetMuzzle = filtergc('function', {Name = 'GetMuzzleCFrame'}, true),
-            GetRecoil = filtergc('function', {Name = 'getRecoil'}, true)
-        }
-    end)
-    
-    if not Success or not Functions.GetMuzzle then return end
-
-    hookfunction(Functions.GetMuzzle, function(Self, Cast)
-        local Origin, Barrel, CamCF = Functions.GetMuzzle(Self, Cast)
-        if Options.SilentAim and not Cast then
-            local targetPart = GetClosestTarget()
-            if targetPart then
-                return CFrame.new(Origin.Position, targetPart.Position), Barrel, CamCF
-            end
-        end
-        return Origin, Barrel, CamCF
-    end)
-
-    hookfunction(Functions.GetRecoil, function(...)
-        local args = {...}
-        if Options.SilentAim and args[1] then
-            args[1]['Barrel_Spread'] = 0
-            args[1]['RecoilForce_Tap'] = 0
-        end
-        return Functions.GetRecoil(unpack(args))
-    end)
-end
-
-task.spawn(function()
-    HookFunctions()
-    while true do
-        pcall(ApplyHitbox)
-        task.wait(1)
-    end
-end)
+task.spawn(function() while true do pcall(ApplyHitbox) task.wait(1) end end)
