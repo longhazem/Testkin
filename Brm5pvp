@@ -1,6 +1,6 @@
 --[[
-    PVP Mobile Hub - Version Final
-    Cập nhật: Fix Silent Aim, ESP Highlight, Hitbox Expander & Mobile UI
+    PVP Mobile Hub - Version Final V2 (Fixed FOV Slider)
+    Cập nhật: Thêm lại Slider FOV, Silent Aim, ESP, Hitbox
 ]]
 
 local Players = game:GetService('Players')
@@ -19,7 +19,7 @@ local Options = {
     ESP = true,
     Hitbox = false,
     HitboxSize = 6,
-    AimPart = "Head", -- Mặc định là Head
+    AimPart = "Head",
     LockAimButton = false
 }
 
@@ -139,37 +139,6 @@ local function GetClosestTarget()
     return target
 end
 
-local function HookFunctions()
-    local Success, Functions = pcall(function()
-        return {
-            GetMuzzle = filtergc('function', {Name = 'GetMuzzleCFrame'}, true),
-            GetRecoil = filtergc('function', {Name = 'getRecoil'}, true)
-        }
-    end)
-    
-    if not Success or not Functions.GetMuzzle then return end
-
-    hookfunction(Functions.GetMuzzle, function(Self, Cast)
-        local Origin, Barrel, CamCF = Functions.GetMuzzle(Self, Cast)
-        if Options.SilentAim and not Cast then
-            local targetPart = GetClosestTarget()
-            if targetPart then
-                return CFrame.new(Origin.Position, targetPart.Position), Barrel, CamCF
-            end
-        end
-        return Origin, Barrel, CamCF
-    end)
-
-    hookfunction(Functions.GetRecoil, function(...)
-        local args = {...}
-        if Options.SilentAim and args[1] then
-            args[1]['Barrel_Spread'] = 0
-            args[1]['RecoilForce_Tap'] = 0
-        end
-        return Functions.GetRecoil(unpack(args))
-    end)
-end
-
 ---------------------------------------------------------
 -- UI GIAO DIỆN (MOBILE OPTIMIZED)
 ---------------------------------------------------------
@@ -178,9 +147,10 @@ pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 240, 0, 290)
-Main.Position = UDim2.new(0.5, -120, 0.5, -145)
+Main.Size = UDim2.new(0, 240, 0, 340) -- Tăng size để chứa Slider
+Main.Position = UDim2.new(0.5, -120, 0.5, -170)
 Main.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Main.BorderSizePixel = 0
 Main.Parent = ScreenGui
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
@@ -219,10 +189,64 @@ CreateToggle("NPC ESP", UDim2.new(0.05, 0, 0, 85), function(s)
     end
 end, Options.ESP)
 CreateToggle("Show FOV", UDim2.new(0.05, 0, 0, 125), function(s) Options.ShowFov = s end, Options.ShowFov)
-CreateToggle("Hitbox Mod", UDim2.new(0.05, 0, 0, 165), function(s) Options.Hitbox = s end, Options.Hitbox)
-CreateToggle("Lock Button", UDim2.new(0.05, 0, 0, 205), function(s) Options.LockAimButton = s end, Options.LockAimButton)
 
--- Floating Button (HEAD/BODY) - Sửa lỗi chạm ngoài
+-- SLIDER FOV (MỚI THÊM LẠI)
+local SliderLabel = Instance.new("TextLabel")
+SliderLabel.Size = UDim2.new(0.9, 0, 0, 20)
+SliderLabel.Position = UDim2.new(0.05, 0, 0, 162)
+SliderLabel.BackgroundTransparency = 1
+SliderLabel.Text = "FOV Size: " .. Options.FovRadius
+SliderLabel.TextColor3 = Color3.new(1, 1, 1)
+SliderLabel.Font = Enum.Font.Gotham
+SliderLabel.TextSize = 12
+SliderLabel.Parent = Main
+
+local SliderBG = Instance.new("Frame")
+SliderBG.Size = UDim2.new(0.9, 0, 0, 8)
+SliderBG.Position = UDim2.new(0.05, 0, 0, 185)
+SliderBG.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SliderBG.Parent = Main
+Instance.new("UICorner", SliderBG)
+
+local SliderFill = Instance.new("Frame")
+SliderFill.Size = UDim2.new(Options.FovRadius / 500, 0, 1, 0)
+SliderFill.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+SliderFill.Parent = SliderBG
+Instance.new("UICorner", SliderFill)
+
+local isSiding = false
+local function UpdateSlider(input)
+    local sizeX = math.clamp((input.Position.X - SliderBG.AbsolutePosition.X) / SliderBG.AbsoluteSize.X, 0, 1)
+    SliderFill.Size = UDim2.new(sizeX, 0, 1, 0)
+    local val = math.floor(sizeX * 500)
+    if val < 5 then val = 5 end
+    Options.FovRadius = val
+    SliderLabel.Text = "FOV Size: " .. val
+end
+
+SliderBG.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isSiding = true
+        UpdateSlider(input)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if isSiding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        UpdateSlider(input)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isSiding = false
+    end
+end)
+
+CreateToggle("Hitbox Mod", UDim2.new(0.05, 0, 0, 210), function(s) Options.Hitbox = s end, Options.Hitbox)
+CreateToggle("Lock Button", UDim2.new(0.05, 0, 0, 250), function(s) Options.LockAimButton = s end, Options.LockAimButton)
+
+-- Floating Button (HEAD/BODY)
 local Float = Instance.new("TextButton")
 Float.Size = UDim2.new(0, 100, 0, 40)
 Float.Position = UDim2.new(0.8, -100, 0.2, 0)
@@ -267,7 +291,7 @@ end)
 -- Kéo menu chính
 local mDragging, mStart, mPos = false, nil, nil
 Main.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+    if (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) and not isSiding then
         mDragging, mStart, mPos = true, i.Position, Main.Position
     end
 end)
@@ -280,8 +304,39 @@ end)
 UserInputService.InputEnded:Connect(function() mDragging = false end)
 
 ---------------------------------------------------------
--- VÒNG LẶP HỆ THỐNG
+-- HOOK HỆ THỐNG
 ---------------------------------------------------------
+local function HookFunctions()
+    local Success, Functions = pcall(function()
+        return {
+            GetMuzzle = filtergc('function', {Name = 'GetMuzzleCFrame'}, true),
+            GetRecoil = filtergc('function', {Name = 'getRecoil'}, true)
+        }
+    end)
+    
+    if not Success or not Functions.GetMuzzle then return end
+
+    hookfunction(Functions.GetMuzzle, function(Self, Cast)
+        local Origin, Barrel, CamCF = Functions.GetMuzzle(Self, Cast)
+        if Options.SilentAim and not Cast then
+            local targetPart = GetClosestTarget()
+            if targetPart then
+                return CFrame.new(Origin.Position, targetPart.Position), Barrel, CamCF
+            end
+        end
+        return Origin, Barrel, CamCF
+    end)
+
+    hookfunction(Functions.GetRecoil, function(...)
+        local args = {...}
+        if Options.SilentAim and args[1] then
+            args[1]['Barrel_Spread'] = 0
+            args[1]['RecoilForce_Tap'] = 0
+        end
+        return Functions.GetRecoil(unpack(args))
+    end)
+end
+
 task.spawn(function()
     HookFunctions()
     while true do
