@@ -1,373 +1,291 @@
+--[[
+    PVP Mobile Hub - Version Final
+    Cập nhật: Fix Silent Aim, ESP Highlight, Hitbox Expander & Mobile UI
+]]
+
 local Players = game:GetService('Players')
 local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService('Workspace')
 local RunService = game:GetService('RunService')
 local UserInputService = game:GetService('UserInputService')
 local CoreGui = game:GetService('CoreGui')
-
 local Camera = Workspace.CurrentCamera
 
 -- Cấu hình mặc định
 local Options = {
     SilentAim = true,
     ShowFov = true,
-    FovRadius = 40,
+    FovRadius = 50,
     ESP = true,
-    AimPart = "Head", -- "Head" hoặc "Torso"
+    Hitbox = false,
+    HitboxSize = 6,
+    AimPart = "Head", -- Mặc định là Head
     LockAimButton = false
 }
 
--- Khởi tạo vòng FOV
-local Drawings = {FovOutline = nil}
-function AddDrawing(Type, Properties)
-    local DrawingObject = Drawing.new(Type)
-    for Property, Value in pairs(Properties) do
-        DrawingObject[Property] = Value
-    end
-    return DrawingObject
-end
-
-Drawings.FovOutline = AddDrawing('Circle', {
-    Visible = Options.ShowFov, 
-    Filled = false, 
-    Position = Camera.ViewportSize / 2, 
-    Radius = Options.FovRadius, 
-    Thickness = 1.5, 
-    Color = Color3.new(1, 1, 1)
-})
+---------------------------------------------------------
+-- KHỞI TẠO VÒNG FOV
+---------------------------------------------------------
+local FovCircle = Drawing.new('Circle')
+FovCircle.Visible = Options.ShowFov
+FovCircle.Thickness = 1.5
+FovCircle.Color = Color3.new(1, 1, 1)
+FovCircle.Filled = false
 
 RunService.RenderStepped:Connect(function()
-    if Drawings.FovOutline then
-        Drawings.FovOutline.Position = Camera.ViewportSize / 2
-        Drawings.FovOutline.Radius = Options.FovRadius
-        Drawings.FovOutline.Visible = Options.ShowFov
-    end
+    FovCircle.Position = Camera.ViewportSize / 2
+    FovCircle.Radius = Options.FovRadius
+    FovCircle.Visible = Options.ShowFov
 end)
 
 ---------------------------------------------------------
--- LOGIC ESP NPC
+-- HITBOX EXPANDER (BYPASS SIZE)
 ---------------------------------------------------------
-local function clearESP()
-    for _, object in pairs(Workspace:GetDescendants()) do
-        if object.Name == "ESP_Visual" then
-            object:Destroy()
+local ModifiedParts = {}
+local OriginalSizes = {}
+
+local mt = getrawmetatable(game)
+local old_index = mt.__index
+setreadonly(mt, false)
+
+mt.__index = newcclosure(function(t, k)
+    if k == "Size" and ModifiedParts[t] then
+        return OriginalSizes[t] or Vector3.new(1, 1, 1)
+    end
+    return old_index(t, k)
+end)
+setreadonly(mt, true)
+
+local function ResetHitboxes()
+    for part, size in pairs(OriginalSizes) do
+        if part and part.Parent then
+            part.Size = size
+            part.Transparency = 0
+            part.CanCollide = true
         end
     end
+    table.clear(ModifiedParts)
+    table.clear(OriginalSizes)
 end
 
-local function highlightMaleModels()
-    if not Options.ESP then 
-        clearESP()
+local function ApplyHitbox()
+    if not Options.Hitbox then
+        if next(ModifiedParts) then ResetHitboxes() end
         return 
     end
 
-    for _, object in pairs(Workspace:GetChildren()) do
-        if object:IsA("Model") and object.Name == "Male" then
-            local targetPart = object:FindFirstChild("HumanoidRootPart") or object:FindFirstChild("Torso") or object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart")
+    local sizeVec = Vector3.new(Options.HitboxSize, Options.HitboxSize, Options.HitboxSize)
+    for _, model in pairs(Workspace:GetChildren()) do
+        if model:IsA("Model") and model.Name == "Male" then
+            local target = (Options.AimPart == "Head") and model:FindFirstChild("Head") or 
+                           (model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso") or model:FindFirstChild("HumanoidRootPart"))
             
-            if targetPart and not object:FindFirstChild("ESP_Visual") then
-                local bgui = Instance.new("BillboardGui")
-                bgui.Name = "ESP_Visual"
-                bgui.Adornee = targetPart
-                bgui.Size = UDim2.new(4.5, 0, 6, 0)
-                bgui.AlwaysOnTop = true
-                
-                local box = Instance.new("Frame")
-                box.Size = UDim2.new(1, 0, 1, 0)
-                box.BackgroundTransparency = 0.75
-                box.BackgroundColor3 = Color3.fromRGB(0, 255, 200)
-                box.BorderSizePixel = 1.5
-                box.BorderColor3 = Color3.fromRGB(255, 255, 255)
-                box.Parent = bgui
-                
-                bgui.Parent = object
+            if target and target:IsA("BasePart") then
+                if not ModifiedParts[target] then
+                    ModifiedParts[target] = true
+                    OriginalSizes[target] = target.Size
+                    target.CanCollide = false
+                    target.Transparency = 0.5
+                end
+                if target.Size ~= sizeVec then target.Size = sizeVec end
             end
         end
     end
 end
 
-task.spawn(function()
-    while true do
-        highlightMaleModels()
-        task.wait(5)
-    end
-end)
-
 ---------------------------------------------------------
--- UI MENU CHÍNH
+-- ESP HIGHLIGHT
 ---------------------------------------------------------
-local ScreenGui = Instance.new("ScreenGui")
-local success = pcall(function() ScreenGui.Parent = CoreGui end)
-if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 250, 0, 260)
-MainFrame.Position = UDim2.new(0.5, -125, 0.5, -130)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Parent = ScreenGui
-
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.BackgroundTransparency = 1
-Title.Text = "PVP Mobile BY Tokai"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 14
-Title.Parent = MainFrame
-
-local function createBtn(text, pos, color)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 30)
-    btn.Position = pos
-    btn.BackgroundColor3 = color
-    btn.Text = text
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.GothamSemibold
-    btn.Parent = MainFrame
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-    return btn
-end
-
-local ToggleAimBtn = createBtn("Silent Aim: ON", UDim2.new(0.05, 0, 0, 40), Color3.fromRGB(0, 150, 0))
-ToggleAimBtn.MouseButton1Click:Connect(function()
-    Options.SilentAim = not Options.SilentAim
-    ToggleAimBtn.Text = Options.SilentAim and "Silent Aim: ON" or "Silent Aim: OFF"
-    ToggleAimBtn.BackgroundColor3 = Options.SilentAim and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
-end)
-
-local ToggleEspBtn = createBtn("NPC ESP: ON", UDim2.new(0.05, 0, 0, 75), Color3.fromRGB(0, 150, 0))
-ToggleEspBtn.MouseButton1Click:Connect(function()
-    Options.ESP = not Options.ESP
-    ToggleEspBtn.Text = Options.ESP and "NPC ESP: ON" or "NPC ESP: OFF"
-    ToggleEspBtn.BackgroundColor3 = Options.ESP and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
-    if not Options.ESP then clearESP() else highlightMaleModels() end
-end)
-
-local ToggleFovBtn = createBtn("Show FOV: ON", UDim2.new(0.05, 0, 0, 110), Color3.fromRGB(0, 150, 0))
-ToggleFovBtn.MouseButton1Click:Connect(function()
-    Options.ShowFov = not Options.ShowFov
-    ToggleFovBtn.Text = Options.ShowFov and "Show FOV: ON" or "Show FOV: OFF"
-    ToggleFovBtn.BackgroundColor3 = Options.ShowFov and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
-end)
-
-local SliderLabel = Instance.new("TextLabel")
-SliderLabel.Size = UDim2.new(0.9, 0, 0, 20)
-SliderLabel.Position = UDim2.new(0.05, 0, 0, 150)
-SliderLabel.BackgroundTransparency = 1
-SliderLabel.Text = "FOV Size: " .. Options.FovRadius
-SliderLabel.TextColor3 = Color3.new(1, 1, 1)
-SliderLabel.Font = Enum.Font.Gotham
-SliderLabel.Parent = MainFrame
-
-local SliderBG = Instance.new("Frame")
-SliderBG.Size = UDim2.new(0.9, 0, 0, 12)
-SliderBG.Position = UDim2.new(0.05, 0, 0, 175)
-SliderBG.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-SliderBG.Parent = MainFrame
-Instance.new("UICorner", SliderBG).CornerRadius = UDim.new(1, 0)
-
-local SliderFill = Instance.new("Frame")
-SliderFill.Size = UDim2.new(Options.FovRadius / 500, 0, 1, 0)
-SliderFill.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-SliderFill.Parent = SliderBG
-Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(1, 0)
-
-local isSiding = false
-local function UpdateSlider(input)
-    local sizeX = math.clamp((input.Position.X - SliderBG.AbsolutePosition.X) / SliderBG.AbsoluteSize.X, 0, 1)
-    SliderFill.Size = UDim2.new(sizeX, 0, 1, 0)
-    local val = math.floor(sizeX * 500)
-    if val < 5 then val = 5 end
-    Options.FovRadius = val
-    SliderLabel.Text = "FOV Size: " .. val
-end
-
-SliderBG.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isSiding = true
-        UpdateSlider(input)
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if isSiding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        UpdateSlider(input)
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isSiding = false
-    end
-end)
-
-local ToggleLockBtn = createBtn("Lock Aim Button: OFF", UDim2.new(0.05, 0, 0, 205), Color3.fromRGB(150, 0, 0))
-ToggleLockBtn.MouseButton1Click:Connect(function()
-    Options.LockAimButton = not Options.LockAimButton
-    ToggleLockBtn.Text = Options.LockAimButton and "Lock Aim Button: ON" or "Lock Aim Button: OFF"
-    ToggleLockBtn.BackgroundColor3 = Options.LockAimButton and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
-end)
-
-local dragToggle, dragStart, startPos
-MainFrame.InputBegan:Connect(function(input)
-    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not isSiding then
-        dragToggle = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if dragToggle and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragToggle = false
-    end
-end)
-
----------------------------------------------------------
--- NÚT CHUYỂN HEAD/BODY (FLOAT)
----------------------------------------------------------
-local FloatingBtn = Instance.new("TextButton")
-FloatingBtn.Size = UDim2.new(0, 100, 0, 45)
-FloatingBtn.Position = UDim2.new(0.8, -110, 0.2, 0)
-FloatingBtn.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
-FloatingBtn.Text = "Aim: HEAD"
-FloatingBtn.TextColor3 = Color3.new(1, 1, 1)
-FloatingBtn.Font = Enum.Font.GothamBold
-FloatingBtn.TextSize = 14
-FloatingBtn.Parent = ScreenGui
-
-Instance.new("UICorner", FloatingBtn).CornerRadius = UDim.new(0, 8)
-Instance.new("UIStroke", FloatingBtn).Thickness = 2
-
-local isPressingFloatBtn = false
-local floatDragStart, floatStartPos
-local hasDraggedFloat = false
-
-FloatingBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isPressingFloatBtn = true
-        floatDragStart = input.Position
-        floatStartPos = FloatingBtn.Position
-        hasDraggedFloat = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if isPressingFloatBtn and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        if not Options.LockAimButton then
-            hasDraggedFloat = true
-            local delta = input.Position - floatDragStart
-            FloatingBtn.Position = UDim2.new(floatStartPos.X.Scale, floatStartPos.X.Offset + delta.X, floatStartPos.Y.Scale, floatStartPos.Y.Offset + delta.Y)
+local function ensureHighlight(model)
+    if model:IsA("Model") and model.Name == "Male" then
+        local hl = model:FindFirstChild("AutoHighlight")
+        if not hl then
+            hl = Instance.new("Highlight")
+            hl.Name = "AutoHighlight"
+            hl.FillColor = Color3.fromRGB(255, 255, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Parent = model
         end
+        hl.Enabled = Options.ESP
     end
-end)
+end
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        if isPressingFloatBtn then
-            isPressingFloatBtn = false
-            if not hasDraggedFloat then
-                if Options.AimPart == "Head" then
-                    Options.AimPart = "Torso"
-                    FloatingBtn.Text = "Aim: BODY"
-                    FloatingBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 255)
-                else
-                    Options.AimPart = "Head"
-                    FloatingBtn.Text = "Aim: HEAD"
-                    FloatingBtn.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
+Workspace.DescendantAdded:Connect(ensureHighlight)
+for _, v in pairs(Workspace:GetDescendants()) do ensureHighlight(v) end
+
+---------------------------------------------------------
+-- SILENT AIM (FIXED)
+---------------------------------------------------------
+local function GetClosestTarget()
+    local target, dist = nil, math.huge
+    for _, model in pairs(Workspace:GetChildren()) do
+        if model:IsA("Model") and model.Name == "Male" then
+            local part = (Options.AimPart == "Head") and model:FindFirstChild("Head") or 
+                         (model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso") or model:FindFirstChild("HumanoidRootPart"))
+            
+            if part then
+                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local mag = (Vector2.new(pos.X, pos.Y) - (Camera.ViewportSize / 2)).Magnitude
+                    if mag <= Options.FovRadius and mag < dist then
+                        target = part
+                        dist = mag
+                    end
                 end
             end
         end
-        hasDraggedFloat = false
     end
-end)
-
----------------------------------------------------------
--- LOGIC SILENT AIM (CẬP NHẬT TÌM KIẾM TORSO)
----------------------------------------------------------
-local Functions = {
-    GetClients = filtergc('function', {Name = 'GetClients', Constants = {'Clients'}}, false),
-    GetMuzzleCFrame = filtergc('function', {Name = 'GetMuzzleCFrame'}, true),
-    GetRecoil = filtergc('function', {Name = 'getRecoil'}, true)
-}
-
-local ClientService = nil
-
-for _, Function in pairs(Functions.GetClients) do
-    local Info = getinfo(Function)
-    if not Info.source:find('ClientService') then continue end
-    Functions.GetClients = Function
+    return target
 end
 
-local OldClients; OldClients = hookfunction(Functions.GetClients, function(Self)
-    ClientService = Self; return OldClients(Self)
-end)
-
--- Hàm tìm bộ phận mục tiêu (Sửa lỗi không nhận Torso)
-local function GetTargetPart(Data)
-    if not Data or not Data.Actor or not Data.Actor.Parts then return nil end
+local function HookFunctions()
+    local Success, Functions = pcall(function()
+        return {
+            GetMuzzle = filtergc('function', {Name = 'GetMuzzleCFrame'}, true),
+            GetRecoil = filtergc('function', {Name = 'getRecoil'}, true)
+        }
+    end)
     
-    if Options.AimPart == "Head" then
-        return Data.Actor.Parts.Head
-    else
-        -- Thử tìm mọi bộ phận liên quan đến thân
-        local Parts = Data.Actor.Parts
-        return Parts.Torso or Parts.UpperTorso or Parts.HumanoidRootPart or Parts.LowerTorso
-    end
-end
+    if not Success or not Functions.GetMuzzle then return end
 
-function GetClosest()
-    local ClosestPlayer, ClosestData, ClosestDistance = nil, nil, math.huge
-    if not ClientService then return end
-
-    for Player, Data in pairs(ClientService.Clients) do
-        if Player == LocalPlayer then continue end
-        if not Data.Actor or not Data.Actor.Alive then continue end
-        if Data.Squad == ClientService.LocalClient.Squad then continue end
-
-        local targetPart = GetTargetPart(Data)
-        if not targetPart then continue end
-
-        local Position, OnScreen = Camera:WorldToViewportPoint(targetPart.Position)
-        if not OnScreen then continue end
-
-        local Distance = (Vector2.new(Position.X, Position.Y) - (Camera.ViewportSize / 2)).Magnitude
-        if Distance > Options.FovRadius or Distance > ClosestDistance then continue end
-
-        ClosestPlayer = Player; ClosestData = Data; ClosestDistance = Distance
-    end
-    return ClosestPlayer, ClosestData
-end
-
-local OldMuzzle; OldMuzzle = hookfunction(Functions.GetMuzzleCFrame, function(Self, Cast)
-    local Origin, Barrel, CameraCF = OldMuzzle(Self, Cast)
-    if Options.SilentAim and not Cast and Origin then
-        local Player, Data = GetClosest()
-        if Player then
-            local targetPart = GetTargetPart(Data)
+    hookfunction(Functions.GetMuzzle, function(Self, Cast)
+        local Origin, Barrel, CamCF = Functions.GetMuzzle(Self, Cast)
+        if Options.SilentAim and not Cast then
+            local targetPart = GetClosestTarget()
             if targetPart then
-                return CFrame.new(Origin.Position, targetPart.Position), Barrel, CameraCF
+                return CFrame.new(Origin.Position, targetPart.Position), Barrel, CamCF
             end
         end
+        return Origin, Barrel, CamCF
+    end)
+
+    hookfunction(Functions.GetRecoil, function(...)
+        local args = {...}
+        if Options.SilentAim and args[1] then
+            args[1]['Barrel_Spread'] = 0
+            args[1]['RecoilForce_Tap'] = 0
+        end
+        return Functions.GetRecoil(unpack(args))
+    end)
+end
+
+---------------------------------------------------------
+-- UI GIAO DIỆN (MOBILE OPTIMIZED)
+---------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 240, 0, 290)
+Main.Position = UDim2.new(0.5, -120, 0.5, -145)
+Main.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Main.Parent = ScreenGui
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "PVP HUB BY TOKAI"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.Parent = Main
+
+local function CreateToggle(text, pos, callback, state)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 32)
+    btn.Position = pos
+    btn.BackgroundColor3 = state and Color3.fromRGB(40, 150, 40) or Color3.fromRGB(150, 40, 40)
+    btn.Text = text .. (state and ": ON" or ": OFF")
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.Parent = Main
+    Instance.new("UICorner", btn)
+    
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.Text = text .. (state and ": ON" or ": OFF")
+        btn.BackgroundColor3 = state and Color3.fromRGB(40, 150, 40) or Color3.fromRGB(150, 40, 40)
+        callback(state)
+    end)
+end
+
+CreateToggle("Silent Aim", UDim2.new(0.05, 0, 0, 45), function(s) Options.SilentAim = s end, Options.SilentAim)
+CreateToggle("NPC ESP", UDim2.new(0.05, 0, 0, 85), function(s) 
+    Options.ESP = s 
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("Highlight") and v.Name == "AutoHighlight" then v.Enabled = s end
     end
-    return Origin, Barrel, CameraCF
+end, Options.ESP)
+CreateToggle("Show FOV", UDim2.new(0.05, 0, 0, 125), function(s) Options.ShowFov = s end, Options.ShowFov)
+CreateToggle("Hitbox Mod", UDim2.new(0.05, 0, 0, 165), function(s) Options.Hitbox = s end, Options.Hitbox)
+CreateToggle("Lock Button", UDim2.new(0.05, 0, 0, 205), function(s) Options.LockAimButton = s end, Options.LockAimButton)
+
+-- Floating Button (HEAD/BODY) - Sửa lỗi chạm ngoài
+local Float = Instance.new("TextButton")
+Float.Size = UDim2.new(0, 100, 0, 40)
+Float.Position = UDim2.new(0.8, -100, 0.2, 0)
+Float.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+Float.Text = "Aim: HEAD"
+Float.TextColor3 = Color3.new(1, 1, 1)
+Float.Font = Enum.Font.GothamBold
+Float.Parent = ScreenGui
+Instance.new("UICorner", Float)
+
+local pressing, dragStart, startPos, hasDragged = false, nil, nil, false
+Float.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        pressing, dragStart, startPos, hasDragged = true, i.Position, Float.Position, false
+    end
 end)
 
-local OldRecoil; OldRecoil = hookfunction(Functions.GetRecoil, function(...)
-    local Args = {...}
-    if Options.SilentAim and Args[1] then
-        Args[1]['Barrel_Spread'] = 0; Args[1]['RecoilForce_Tap'] = 0
+UserInputService.InputChanged:Connect(function(i)
+    if pressing and not Options.LockAimButton and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local delta = i.Position - dragStart
+        if delta.Magnitude > 5 then
+            hasDragged = true
+            Float.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
     end
-    return OldRecoil(unpack(Args))
+end)
+
+UserInputService.InputEnded:Connect(function(i)
+    if (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) and pressing then
+        pressing = false
+        if not hasDragged then
+            if Options.AimPart == "Head" then
+                Options.AimPart = "Torso"; Float.Text = "Aim: BODY"; Float.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+            else
+                Options.AimPart = "Head"; Float.Text = "Aim: HEAD"; Float.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+            end
+            if Options.Hitbox then ResetHitboxes() end
+        end
+    end
+end)
+
+-- Kéo menu chính
+local mDragging, mStart, mPos = false, nil, nil
+Main.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        mDragging, mStart, mPos = true, i.Position, Main.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if mDragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local delta = i.Position - mStart
+        Main.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset + delta.X, mPos.Y.Scale, mPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function() mDragging = false end)
+
+---------------------------------------------------------
+-- VÒNG LẶP HỆ THỐNG
+---------------------------------------------------------
+task.spawn(function()
+    HookFunctions()
+    while true do
+        pcall(ApplyHitbox)
+        task.wait(1)
+    end
 end)
