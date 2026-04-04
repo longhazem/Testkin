@@ -29,6 +29,7 @@ local showHitbox = false
 local fullBrightEnabled = false 
 local alwaysDayEnabled = false
 local fastScanEnabled = false
+local nvgEnabled = false
 local isUnloaded = false     
 local patchOptions = { recoil = false, firemodes = false }
 
@@ -43,14 +44,11 @@ local hitboxVisualColor = Color3.fromRGB(255, 0, 0)
 local noFogConnection = nil
 
 local function clearNVG(gui)
-    if gui:IsA("ScreenGui") and gui.Name == "NVGInterface" then
+    if nvgEnabled and gui:IsA("ScreenGui") and gui.Name == "NVGInterface" then
         gui:Destroy()
     end
 end
 
-for _, gui in ipairs(playerGui:GetChildren()) do
-    clearNVG(gui)
-end
 playerGui.ChildAdded:Connect(clearNVG)
 
 pcall(function()
@@ -247,7 +245,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({ 
     Name = "⚔️🐧 Tokai Hub (Universal)", 
     LoadingTitle = "Executor: " .. identifyexecutor(),
-    Theme = "Default" 
+    Theme = "Tokaihub" 
 })
 
 local CombatTab = Window:CreateTab("Combat ⚔️")
@@ -281,7 +279,19 @@ VisibleTab:CreateToggle({
         for model, _ in pairs(activeNPCs) do applyOutline(model) end
     end
 })
-VisibleTab:CreateToggle({ Name = "Fast Scan (0.001s)", CurrentValue = false, Callback = function(v) fastScanEnabled = v end })
+VisibleTab:CreateToggle({ Name = "NPC scanning must be enabled.)", CurrentValue = false, Callback = function(v) fastScanEnabled = v end })
+VisibleTab:CreateToggle({
+    Name = "Remove NVG Interface",
+    CurrentValue = false,
+    Callback = function(v)
+        nvgEnabled = v
+        if v then
+            for _, gui in ipairs(playerGui:GetChildren()) do
+                clearNVG(gui)
+            end
+        end
+    end
+})
 VisibleTab:CreateToggle({
    Name = "No Fog",
    CurrentValue = false,
