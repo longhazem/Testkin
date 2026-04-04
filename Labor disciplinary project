@@ -245,7 +245,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({ 
     Name = "⚔️🐧 Tokai Hub (Universal)", 
     LoadingTitle = "Executor: " .. identifyexecutor(),
-    Theme = "Tokaihub" 
+    Theme = "Default" 
 })
 
 local CombatTab = Window:CreateTab("Combat ⚔️")
@@ -253,6 +253,19 @@ CombatTab:CreateToggle({ Name = "Silent Aim (Hook)", CurrentValue = false, Callb
 CombatTab:CreateToggle({ Name = "Silent Hitbox", CurrentValue = false, Callback = function(v) silentEnabled = v end })
 CombatTab:CreateToggle({ Name = "Show Hitbox Visual", CurrentValue = false, Callback = function(v) showHitbox = v end })
 CombatTab:CreateSlider({ Name = "Hitbox Size", Range = {0, 20}, Increment = 1, CurrentValue = 20, Callback = function(v) hitboxSize = v end })
+
+local CharacterTab = Window:CreateTab("Character 👤")
+CharacterTab:CreateButton({
+    Name = "Fly & Walkspeed (Coming Soon)",
+    Callback = function()
+        Rayfield:Notify({
+            Title = "Notification",
+            Content = "Feature currently under development!",
+            Duration = 3,
+            Image = 4483362458,
+        })
+    end,
+})
 
 local FovTab = Window:CreateTab("FOV Settings ⭕")
 FovTab:CreateToggle({ Name = "Show FOV Circle", CurrentValue = true, Callback = function(v) showFovCircle = v end })
@@ -279,7 +292,7 @@ VisibleTab:CreateToggle({
         for model, _ in pairs(activeNPCs) do applyOutline(model) end
     end
 })
-VisibleTab:CreateToggle({ Name = "NPC scanning must be enabled.)", CurrentValue = false, Callback = function(v) fastScanEnabled = v end })
+VisibleTab:CreateToggle({ Name = "Fast Scan (0.001s)", CurrentValue = false, Callback = function(v) fastScanEnabled = v end })
 VisibleTab:CreateToggle({
     Name = "Remove NVG Interface",
     CurrentValue = false,
