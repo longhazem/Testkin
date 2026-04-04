@@ -243,9 +243,9 @@ end
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({ 
-    Name = "⚔️🐧 Tokai Hub (Universal)", 
+    Name = "⚔️🐧 Tokai Hub vietnams❤️ (Universal)", 
     LoadingTitle = "Executor: " .. identifyexecutor(),
-    Theme = "Default" 
+    Theme = "bytokaivipproVN🇯🇵" 
 })
 
 local CombatTab = Window:CreateTab("Combat ⚔️")
@@ -259,8 +259,8 @@ CharacterTab:CreateButton({
     Name = "Fly & Walkspeed (Coming Soon)",
     Callback = function()
         Rayfield:Notify({
-            Title = "Notification",
-            Content = "Feature currently under development!",
+            Title = "comesooon!!!!!!!!!!!!",
+            Content = "!soon or im eat you!",
             Duration = 3,
             Image = 4483362458,
         })
@@ -292,7 +292,7 @@ VisibleTab:CreateToggle({
         for model, _ in pairs(activeNPCs) do applyOutline(model) end
     end
 })
-VisibleTab:CreateToggle({ Name = "Fast Scan (0.001s)", CurrentValue = false, Callback = function(v) fastScanEnabled = v end })
+VisibleTab:CreateToggle({ Name = "npc Scan (😱)", CurrentValue = false, Callback = function(v) fastScanEnabled = v end })
 VisibleTab:CreateToggle({
     Name = "Remove NVG Interface",
     CurrentValue = false,
