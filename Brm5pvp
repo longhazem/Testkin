@@ -17,8 +17,6 @@ local Options = {
     ShowFov = true,
     FovRadius = 50,
     ESP = true,
-    Hitbox = false,
-    HitboxSize = 4,
     AimPart = "Head",
     LockAimButton = false
 }
@@ -114,59 +112,10 @@ local OldRecoil; OldRecoil = hookfunction(Functions.GetRecoil, function(...)
     return OldRecoil(unpack(Args))
 end)
 
+--------------------------------------------------------
+-- Ui
 ---------------------------------------------------------
--- HITBOX EXPANDER (BYPASS & CLIENTSERVICE)
----------------------------------------------------------
-local ModifiedParts = {}
-local OriginalSizes = {}
 
-local mt = getrawmetatable(game)
-local old_index = mt.__index
-setreadonly(mt, false)
-mt.__index = newcclosure(function(t, k)
-    if k == "Size" and ModifiedParts[t] then return OriginalSizes[t] end
-    return old_index(t, k)
-end)
-setreadonly(mt, true)
-
-local function ResetHitboxes()
-    for part, size in pairs(OriginalSizes) do
-        if part and part.Parent then
-            part.Size = size
-            part.Transparency = 0
-            part.CanCollide = true
-        end
-    end
-    table.clear(ModifiedParts)
-    table.clear(OriginalSizes)
-end
-
-local function ApplyHitbox()
-    if not Options.Hitbox or not ClientService then 
-        if next(ModifiedParts) then ResetHitboxes() end
-        return 
-    end
-
-    local sizeVec = Vector3.new(Options.HitboxSize, Options.HitboxSize, Options.HitboxSize)
-    for _, Data in pairs(ClientService.Clients) do
-        if Data.Actor and Data.Actor.Alive and Data.Squad ~= ClientService.LocalClient.Squad then
-            local target = GetActorPart(Data)
-            if target and target:IsA("BasePart") then
-                if not ModifiedParts[target] then
-                    ModifiedParts[target] = true
-                    OriginalSizes[target] = target.Size
-                    target.CanCollide = false
-                    target.Transparency = 0.5
-                end
-                if target.Size ~= sizeVec then target.Size = sizeVec end
-            end
-        end
-    end
-end
-
----------------------------------------------------------
--- UI GIAO DIỆN CHUYÊN NGHIỆP (DRAGGABLE & FULL)
----------------------------------------------------------
 local ScreenGui = Instance.new("ScreenGui")
 pcall(function() ScreenGui.Parent = CoreGui end)
 if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
